@@ -292,23 +292,18 @@ float sd_tube(vec3 pos, vec3 span, vec3 anchor, vec3 offset) {
   return op_diff(d, sd_box(pos, span - offset, anchor));
 }
 
+// Engine functions
+
 vec2 update_res(vec2 cur_res, float d, float obj_id) {
   return (d < cur_res.x) ? vec2(d, obj_id) : cur_res;
 }
 
-
-const float GreyId = 0.0;
-const float RedId = 1.0;
-const float CastleId = 2.0;
-const float BridgeId = 3.0;
-const float DoorId = 4.0;
-const float GroundId = 5.0;
-const float TestId = 6.0;
-
 // For testing and debugging
-vec2 test_sdf(vec3 pos, vec2 res) {
-  float d = res.x;
+vec2 world_sdf_test(vec3 pos) {
+  float d = 1e10;
   d = op_union(d, sd_box(pos - vec3(0.0,-1.0,0.0), vec3(4.0,1.0,4.0)));
+
+  vec2 res = vec2(d, 1.0);
 
   // axes
   {
@@ -448,11 +443,13 @@ vec2 test_sdf(vec3 pos, vec2 res) {
     d = op_union(d, sd_sphere(rep_pos, 0.5));
   }
   */
+  /*
   // revolved pattern
   {
     vec3 rev_pos = revolve(pos, 10);
     d = op_union(d, sd_sphere(rev_pos - vec3(4.0,0.0,0.0), 1.0));
   }
+  */
   // anchored box
   /*
   {
@@ -460,8 +457,20 @@ vec2 test_sdf(vec3 pos, vec2 res) {
   }
   */
 
-  return update_res(res, d, TestId); 
+  if (d < res.x) {
+    res.x = d;
+    res.y = 0.0;
+  }
+
+  return res;
 }
+
+const float GreyId = 0.0;
+const float RedId = 1.0;
+const float CastleId = 2.0;
+const float BridgeId = 3.0;
+const float DoorId = 4.0;
+const float GroundId = 5.0;
 
 float turret_sdf(vec3 pos) {
   float d = 1e10;
@@ -553,12 +562,11 @@ vec2 world_sdf(vec3 pos) {
   float d = 1e10;          
   vec2 res = vec2(d, 0.0);
 
-  res = test_sdf(pos, res);
   //res = debug_sdf(pos, res);
-  //res = ground_sdf(pos, res);
-  //res = castle_sdf(pos, res);
-  //res = bridge_sdf(pos, res);
-  //res = door_sdf(pos, res);
+  res = ground_sdf(pos, res);
+  res = castle_sdf(pos, res);
+  res = bridge_sdf(pos, res);
+  res = door_sdf(pos, res);
 
   return res;
 }
@@ -670,10 +678,6 @@ vec3 world_color(float obj_id, vec3 pos, vec3 normal) {
       vec3 slope_color = mix(vec3(0.48,0.37,0.14), vec3(0.30,0.22,0.08), noise);
       vec3 col = mix(slope_color, grass_color, smoothstep(0.0,1.0,normal.y));
       material_color = col;
-      break;
-    }
-    case int(TestId): {
-      material_color = vec3(0.5,0.0,0.0);
       break;
     }
   }
