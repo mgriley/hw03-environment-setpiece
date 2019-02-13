@@ -5,6 +5,9 @@ uniform vec3 u_Eye, u_Ref, u_Up;
 uniform vec2 u_Dimensions;
 uniform float u_Time;
 
+uniform bvec3 u_bin;
+uniform vec3 u_fin;
+
 in vec2 fs_Pos;
 out vec4 out_Col;
 
@@ -16,14 +19,19 @@ struct AABB {
   vec3 max;
 };
 
-// for testing:
-const int num_objects = 2;
-const vec3 sphere_center = vec3(0.0);
-const vec3 sphere_center_b = vec3(10.0);
-const vec3 box_center = vec3(-4.0, 0.0, 10.0);
-const vec3 torus_center = vec3(4.0, 0.0, 10.0);
-
 // Noise functions
+
+vec2 hash2( vec2 p ) { p=vec2(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3))); return fract(sin(p)*18.5453); }
+vec3 hash3( float n ) { return fract(sin(vec3(n,n+1.0,n+2.0))*vec3(338.5453123,278.1459123,191.1234)); }
+float hash(vec2 p) {
+	return fract(dot(hash2(p),vec2(1.0,0.0)));
+}
+vec3 hash3(vec3 p) {
+	p=vec3(dot(p,vec3(127.1,311.7,732.1)),dot(p,vec3(269.5,183.3,23.1)),dot(p,vec3(893.1,21.4,781.2))); return fract(sin(p)*18.5453);	
+}
+float hash3to1(vec3 p) {
+	return fract(dot(hash3(p),vec3(32.32,321.3,123.2)));
+}
 
 float random1( vec2 p , vec2 seed) {
   return fract(sin(dot(p + seed, vec2(127.1, 311.7))) * 43758.5453);
@@ -35,40 +43,6 @@ float random1( vec3 p , vec3 seed) {
 
 vec2 random2( vec2 p , vec2 seed) {
   return fract(sin(vec2(dot(p + seed, vec2(311.7, 127.1)), dot(p + seed, vec2(269.5, 183.3)))) * 85734.3545);
-}
-
-float surflet_noise_3d(vec3 in_pt, vec2 seed) {
-  vec2 p = in_pt.xy;
-  p += vec2(in_pt.z, 0.0);
-
-  // use the surface-lets technique
-  // scale is the length of a cell in the perlin grid
-  float scale = 10.0;
-  vec2 base = floor(p / scale);
-  vec2 corners[4] = vec2[4](
-    base,
-    base + vec2(1.0, 0.0),
-    base + vec2(0.0, 1.0),
-    base + vec2(1.0, 1.0)
-  );
-  float sum = 0.0;
-  for (int i = 0; i < 4; ++i) {
-    vec2 corner = scale * corners[i];
-
-    vec2 corner_dir = 2.0 * random2(corner, seed) - vec2(1.0);
-    // rotate the vector by the third component
-    float angle = in_pt.z;
-    mat2 rotate_matrix = mat2(cos(angle), sin(angle), -sin(angle), cos(angle));
-    corner_dir = rotate_matrix * corner_dir;
-
-    vec2 delta = p - corner;
-    // this is the height if we were only on a slope of
-    // magnitude length(corner_dir) in the direction of corner_dir
-    float sloped_height = dot(delta, corner_dir);
-    float weight = 1.0 - smoothstep(0.0, scale, length(delta));
-    sum += 0.25 * weight * sloped_height;
-  }
-  return (sum + 1.0) / 2.0;
 }
 
 float surflet_noise(vec2 p, vec2 seed) {
@@ -120,6 +94,43 @@ float fbm_noise(vec2 p, vec2 seed) {
     sum += surflet_noise(p * freq, seed) * amp;
   }
   return sum;
+}
+
+float smooth_grad_2d(vec2 pos) {
+	vec2 g = floor(pos);
+	vec2 f = fract(pos);
+
+	vec2 b = vec2(0.0,1.0);
+	vec2 points[4] = vec2[4](b.xx, b.xy, b.yx, b.yy);
+	float sum = 0.0;
+	for (int i = 0; i < points.length(); ++i) {
+		vec2 grad = 2.0*(hash2(g+points[i])-0.5);
+			vec2 delta = f-points[i];
+			float weight = 1.0-smoothstep(0.0,1.0,length(delta));
+			sum += weight*dot(grad,delta);
+	}
+	
+	return clamp(0.0,1.0,0.5+0.5*sum);
+}
+
+float gradient_noise_2d(vec2 pos) {
+	vec2 g = floor(pos);
+	vec2 f = fract(pos);
+	vec2 inter = f*f*f*f*(f*(f*6.0-15.0)+10.0);
+
+	vec2 ga = 2.0*(hash2(g + vec2(0.0,0.0)) - 0.5);
+	vec2 gb = 2.0*(hash2(g + vec2(0.0,1.0)) - 0.5);
+	vec2 gc = 2.0*(hash2(g + vec2(1.0,1.0)) - 0.5);
+	vec2 gd = 2.0*(hash2(g + vec2(1.0,0.0)) - 0.5);
+	
+	float da = dot(ga, f - vec2(0.0,0.0));
+	float db = dot(gb, f - vec2(0.0,1.0));
+	float dc = dot(gc, f - vec2(1.0,1.0));
+	float dd = dot(gd, f - vec2(1.0,0.0));
+	
+	float val = 0.5+0.5*mix(
+    	mix(da, dd, inter.x), mix(db, dc, inter.x), inter.y);
+  return clamp(val,0.0,1.0);
 }
 
 // SDF functions
@@ -296,7 +307,6 @@ vec2 update_res(vec2 cur_res, float d, float obj_id) {
   return (d < cur_res.x) ? vec2(d, obj_id) : cur_res;
 }
 
-
 const float GreyId = 0.0;
 const float RedId = 1.0;
 const float CastleId = 2.0;
@@ -304,6 +314,8 @@ const float BridgeId = 3.0;
 const float DoorId = 4.0;
 const float GroundId = 5.0;
 const float TestId = 6.0;
+const float TerrainId = 7.0;
+const float SubsurfaceId = 8.0;
 
 // For testing and debugging
 vec2 test_sdf(vec3 pos, vec2 res) {
@@ -463,6 +475,29 @@ vec2 test_sdf(vec3 pos, vec2 res) {
   return update_res(res, d, TestId); 
 }
 
+vec2 test_shadows(vec3 pos, vec2 res) {
+  float d = res.x;
+
+  d = op_union(d, sd_plane(pos, vec3(0.0), vec3(0.0,1.0,0.0)));
+  d = op_union(d, sd_box(pos, vec3(3.0,5.0,0.5), vec3(0.5,0.0,0.5)));
+  d = op_union(d, sd_sphere(pos - vec3(5.0,1.0,0.0), 1.0));
+
+  res = update_res(res, d, GreyId);
+  return res;
+}
+
+vec2 test_aa(vec3 pos, vec2 res) {
+  float d = res.x;
+
+  d = op_union(d, sd_plane(pos, vec3(0.0), vec3(0.0,1.0,0.0)));
+  res = update_res(res, d, GreyId);
+  d = op_union(d, sd_box(pos, vec3(3.0,5.0,0.5), vec3(0.5,0.0,0.5)));
+  d = op_union(d, sd_sphere(pos - vec3(5.0,1.0,0.0), 1.0));
+  res = update_res(res, d, RedId);
+
+  return res;
+}
+
 float turret_sdf(vec3 pos) {
   float d = 1e10;
   float slen = 4.0;
@@ -537,10 +572,55 @@ vec2 ground_sdf(vec3 pos, vec2 res) {
   return res;
 }
 
+float terr_fbm(vec2 pos) {
+	float freq = 1.0;
+	float weight = 0.5;
+	float val = 0.0;
+	float weight_sum = 0.0;
+	for (int i = 0; i < 8; ++i) {
+			val += weight * smooth_grad_2d(pos * freq);
+			weight_sum += weight;
+			weight *= 0.5;
+			freq *= 2.0;
+	}
+	return val / weight_sum;
+}
+
+float sd_terrain(vec3 pos) {
+  float h = 60.0*terr_fbm(pos.xz/40.0);
+  // scale down the SD so that we don't step too far forwards.
+  // regardless, we will still stop once we have penetrated the terrain.
+  // this doesn't affect the normal since it uniformly scales the
+  // iso-surfaces, I think.
+  return 0.35*(pos.y - h);  
+}
+
+vec2 terrain_sdf(vec3 pos, vec2 res) {
+  float d = res.x;
+  
+  d = op_union(d, sd_plane(pos, vec3(0.0), vec3(0.0,1.0,0.0)));
+  res = update_res(res, d, GreyId);
+
+  d = op_union(d, sd_terrain(pos));
+  res = update_res(res, d, TerrainId);
+
+  return res;
+}
+
+vec2 test_ss(vec3 pos, vec2 res) {
+  float d = res.x;
+
+  d = op_union(d, sd_sphere(pos, 1.0)); 
+  d = op_union(d, sd_box(pos - vec3(6.0,0.0,0.0), vec3(3.0)));
+  res = update_res(res, d, SubsurfaceId);
+
+  return res;
+}
+
 vec2 debug_sdf(vec3 pos, vec2 res) {
   // axes
   float d = res.x;
-  float len = 20.0;
+  float len = 100.0;
   float cap_r = 0.05;
   d = op_union(d, sd_capsule(pos, vec3(0.0), len*vec3(1.0,0.0,0.0), cap_r));
   d = op_union(d, sd_capsule(pos, vec3(0.0), len*vec3(0.0,1.0,0.0), cap_r));
@@ -553,7 +633,11 @@ vec2 world_sdf(vec3 pos) {
   float d = 1e10;          
   vec2 res = vec2(d, 0.0);
 
-  res = test_sdf(pos, res);
+  res = debug_sdf(pos, res);
+  //res = test_sdf(pos, res);
+  //res = test_aa(pos, res);
+  //res = test_ss(pos, res);
+  res = terrain_sdf(pos, res);
   //res = debug_sdf(pos, res);
   //res = ground_sdf(pos, res);
   //res = castle_sdf(pos, res);
@@ -561,6 +645,21 @@ vec2 world_sdf(vec3 pos) {
   //res = door_sdf(pos, res);
 
   return res;
+}
+
+float compute_shadow(vec3 ro, vec3 rd, float k) {
+  float t = 0.1;
+  float res = 1.0;
+  for (int i = 0; i < 64; ++i) {
+    vec3 pos = ro + t*rd;
+    float sd = world_sdf(pos).x;
+    res = min(res, k*sd/t);
+    t += sd;
+    if (res < 0.001 || t > 1000.0) {
+      break;
+    }
+  }
+  return clamp(res,0.0,1.0);
 }
 
 vec3 world_normal(float obj_id, vec3 pos) {
@@ -609,18 +708,17 @@ vec2 world_intersect(vec3 ro, vec3 rd) {
   */
 
   float t_min = 0.1;
-  float t_max = 1000.0;
-  int max_steps = 200;
+  float t_max = 10000.0;
   float min_step = 0.001;
   // stores (t, obj_id)
   vec2 result = vec2(t_min, -1);
-  for (int i = 0; i < max_steps; ++i) {
+  for (int i = 0; i < 256; ++i) {
     vec3 pt = ro + result.x * rd;
     vec2 dist_result = world_sdf(pt);
     float obj_dist = dist_result.x;
     result.y = dist_result.y;
     // reduce precision of intersection check as distance increases
-    if (abs(obj_dist) < 0.0001*result.x || result.x > t_max) {
+    if (obj_dist < 0.0001*result.x || result.x > t_max) {
       break;
     }
     result.x += max(obj_dist, min_step);
@@ -644,7 +742,8 @@ float compute_ao(vec3 pos, vec3 nor) {
   return clamp(1.0 - 2.0 * occ, 0.0, 1.0);
 }
 
-vec3 world_color(float obj_id, vec3 pos, vec3 normal) {
+vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
+  vec3 final_color = vec3(-1.0);
   vec3 material_color = vec3(0.5, 0.0, 0.0);
   switch (int(obj_id)) {
     case int(GreyId):
@@ -666,8 +765,8 @@ vec3 world_color(float obj_id, vec3 pos, vec3 normal) {
       break;
     case int(GroundId): {
       float noise = surflet_noise(5.0*pos.xz, vec2(23.1, 781.0));
-      vec3 grass_color = mix(vec3(0.13,0.39,0.11), vec3(0.07,0.24,0.06), noise);
-      vec3 slope_color = mix(vec3(0.48,0.37,0.14), vec3(0.30,0.22,0.08), noise);
+      vec3 grass_color = 0.5*mix(vec3(0.13,0.39,0.11), vec3(0.07,0.24,0.06), noise);
+      vec3 slope_color = 0.4*mix(vec3(0.48,0.37,0.14), vec3(0.30,0.22,0.08), noise);
       vec3 col = mix(slope_color, grass_color, smoothstep(0.0,1.0,normal.y));
       material_color = col;
       break;
@@ -676,17 +775,97 @@ vec3 world_color(float obj_id, vec3 pos, vec3 normal) {
       material_color = vec3(0.5,0.0,0.0);
       break;
     }
+    case int(TerrainId): {
+			vec3 col = vec3(0.05,0.05,0.05);
+
+			vec3 brown = 0.5*vec3(0.45,.30,0.15);
+			//vec3 green = 0.63*vec3(0.1,.20,0.10);
+      vec3 snow = 0.2*vec3(1.0,0.95,1.0);
+			col = mix(col, brown, smoothstep(0.7,1.0,normal.y));
+			//col = mix(col, green, smoothstep(0.9,1.0,normal.y));
+
+      float n = smooth_grad_2d(pos.xz/10.0);
+      float snow_f = normal.y * pow(pos.y / 10.0,2.0);
+      col = mix(col, snow, snow_f*smoothstep(0.5,1.0,n));
+
+      material_color = col;
+      break;
+    }
+    case int(SubsurfaceId): {
+      vec3 base_col = vec3(0.3,0.0,0.0);
+      vec3 light_dir = vec3(0.0,0.0,1.0);
+      vec3 light_col = vec3(1.0,1.0,0.9);
+      vec3 scatter_dir = -normalize(light_dir + normal*0.1);
+      float light_amt = pow(max(dot(scatter_dir, -rd), 0.0), 100.0);
+      // very rough approx of the thinness (AA from inside might work better)
+      // works fine if the object is roughly spherical
+      float thinness = pow(1.0 - max(dot(scatter_dir, normal),0.0), 2.0);
+      light_amt *= thinness;
+      base_col = mix(base_col, light_col, light_amt);
+      material_color = base_col;
+
+      //final_color = vec3(light_amt);
+      break;
+    }
   }
 
-  vec3 light_dir = normalize(vec3(-1.0, 1.0, -1.0));
-  float diffuse_factor = clamp(dot(light_dir, normal), 0.0, 1.0);
-  float ambient_factor = 0.2;
-  float occ = compute_ao(pos, normal);
+  // lighting
+  vec3 key_light_col = vec3(1.64,1.27,0.99);
+  vec3 key_light_dir = normalize(vec3(-1.0, 1.0, 1.0));
+  float key_light_amt = clamp(dot(key_light_dir, normal), 0.0, 1.0);
+  vec3 fill_light_col = vec3(0.16,0.20,0.28);
+  vec3 fill_light_dir = vec3(0.0,1.0,0.0);
+  float fill_light_amt = clamp(dot(fill_light_dir, normal), 0.0, 1.0);
+  vec3 indir_light_col = 0.25*key_light_col;
+  vec3 indir_light_dir = normalize(key_light_dir*vec3(-1.0,0.0,-1.0));
+  float indir_light_amt = clamp(dot(indir_light_dir, normal), 0.0, 1.0);
 
-  return material_color * (diffuse_factor + ambient_factor) * occ;
+  float occ = compute_ao(pos, normal);
+  float shadow = compute_shadow(pos+0.001*key_light_dir, key_light_dir, 16.0);
+
+  vec3 lighting = vec3(0.0);
+  lighting += u_bin.x ? vec3(0.0) : key_light_col*key_light_amt*shadow;
+  lighting += u_bin.y ? vec3(0.0) : fill_light_col*fill_light_amt*occ;
+  lighting += u_bin.z ? vec3(0.0) : indir_light_col*indir_light_amt*occ;
+
+  vec3 out_col = lighting * material_color;
+
+  /*
+  // fog
+  {
+    float pt_dist = length(pos - ro);
+    vec3 sun_dir = normalize(vec3(0.0,0.5,1.0));
+    float sun_amt = max(dot(key_light_dir, rd), 0.0);
+    vec3 fog_color = mix(vec3(0.5,0.6,0.7),
+      vec3(1.0,0.9,0.7),pow(sun_amt,2.0));
+    float a = 2.0;
+    float b = 0.2;
+    //float fog_amt = 1.0 - exp(-pt_dist / 500.0); // simple fog
+    float nor_y = min(rd.y, -0.001); // formula requires rd.y < 0
+    // elevation-based fog
+    //float fog_amt = a*exp(-b*ro.y)*(1.0-exp(-b*nor_y*pt_dist))/(b*nor_y);
+    // simple distance fog
+    float fog_amt = 1.0-exp(-0.001*pt_dist);
+    fog_amt = clamp(fog_amt, 0.0, 1.0);
+    out_col = mix(out_col, fog_color, fog_amt);
+    //out_col = vec3(fog_amt);
+  }
+  */
+
+  // gamma correction
+  out_col = pow(out_col, vec3(1.0/2.2));
+
+  // if x is not -1.0, we are in some debug mode, so use
+  // the debug color
+  if (final_color.x == -1.0) {
+    final_color = out_col;
+  }
+  return final_color;
   
   // for debugging:
+  //return out_col*(pos.y/10.0);
   //return vec3(1.0) * occ;
+  //return vec3(1.0) * shadow;
   //return vec3(1.0) * (normal.x + 1.0) * 0.5;
 }
 
@@ -707,34 +886,37 @@ void ray_for_pixel(vec3 eye, vec2 ndc, inout vec3 ro, inout vec3 rd) {
   rd = normalize((u_Ref + h_vec + v_vec) - eye);
 }
 
-vec3 compute_eye() {
-  return u_Eye;
-  // this looks awful
-  // animate the camera around the scene
-  /*
-  float angle = u_Time/200.0;
-  vec2 eye_xz = mat2(vec2(cos(angle), sin(angle)), vec2(-sin(angle), cos(angle))) * u_Eye.xz;
-  return vec3(eye_xz.x, u_Eye.y, eye_xz.y);
-  */
-}
+// TODO - change to 2 for a nicer rendering
+#define AA 1
 
 void main() {
   vec3 ro, rd;
 
-  vec3 eye = compute_eye();  
-  ray_for_pixel(eye, fs_Pos, ro, rd);
-
-  vec2 intersect = world_intersect(ro, rd);
-  float t = intersect.x;
-  float obj_id = intersect.y;
-  vec3 color;
-  if (obj_id == -1.0) {
-    color = background_color(ro, rd);  
-  } else {
-    vec3 inter_pos = ro + t * rd;
-    vec3 world_nor = world_normal(obj_id, inter_pos);  
-    color = world_color(obj_id, inter_pos, world_nor); 
+  vec3 color = vec3(0.0);
+  #if AA > 1
+  for (int i = 0; i < AA; ++i) {
+  for (int j = 0; j < AA; ++j) {
+    vec2 offset = 2.0*(vec2(float(i),float(j))/float(AA)-0.5);
+    vec2 uv_pos = fs_Pos + offset/u_Dimensions.xy;
+  #else
+    vec2 uv_pos = fs_Pos;
+  #endif
+    ray_for_pixel(u_Eye, uv_pos, ro, rd);
+    vec2 intersect = world_intersect(ro, rd);
+    float t = intersect.x;
+    float obj_id = intersect.y;
+    if (obj_id == -1.0) {
+      color += background_color(ro, rd);  
+    } else {
+      vec3 inter_pos = ro + t * rd;
+      vec3 world_nor = world_normal(obj_id, inter_pos);  
+      color += world_color(obj_id, ro, rd, inter_pos, world_nor); 
+    } 
+  #if AA > 1
   }
+  }
+  color /= float(AA*AA);
+  #endif
 
   //vec3 col = 0.5 * (rd + vec3(1.0));
 
