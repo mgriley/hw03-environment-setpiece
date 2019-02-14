@@ -185,6 +185,19 @@ float sd_cylinder(vec3 p, vec2 span) {
   return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
 }
 
+/*
+float sd_cylinder(vec3 p, vec2 full_span, vec2 anchor) {
+  vec2 d = vec2(length(p.xz), abs(p.y)) - span;
+  return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
+}
+*/
+
+float sd_ellipsoid(vec3 p, vec3 r) {
+	float k0 = length(p/r);
+	float k1 = length(p/(r*r));
+	return k0*(k0-1.0)/k1;
+}
+
 vec4 op_elongate(vec3 pos, vec3 extents) {
   vec3 q = abs(pos) - extents;
   return vec4(max(q, 0.0), min(max(max(extents.x, extents.y), extents.z), 0.0));
@@ -232,6 +245,32 @@ float op_sintersect(float d1, float d2, float k) {
 float op_sdiff(float d1, float d2, float k) {
   float h = max(1.0 - abs(d1 + d2) / k, 0.0);
   return max(d1, -d2) + h*h*k/4.0;
+}
+
+// operations that tell which one was chosen
+
+vec2 op2_union(float d1, float d2) {
+  return vec2(op_union(d1, d2), d1 < d2 ? 0.0 : 1.0);
+}
+
+vec2 op2_intersect(float d1, float d2) {
+  return vec2(op_intersect(d1, d2), d1 > d2 ? 0.0 : 1.0);
+}
+
+vec2 op2_diff(float d1, float d2) {
+  return vec2(op_diff(d1, d2), d1 > -d2 ? 0.0 : 1.0);
+}
+
+vec2 op2_sunion(float d1, float d2, float k) {
+  return vec2(op_sunion(d1,d2,k), d1 < d2 ? 0.0 : 1.0);
+}
+
+vec2 op2_sintersect(float d1, float d2, float k) {
+  return vec2(op_sintersect(d1,d2,k), d1 > d2 ? 0.0 : 1.0);
+}
+
+vec2 op2_sdiff(float d1, float d2, float k) {
+  return vec2(op_sdiff(d1,d2,k), d1 > -d2 ? 0.0 : 1.0);
 }
 
 // mirror the given position across a plane to the side
@@ -309,13 +348,13 @@ vec2 update_res(vec2 cur_res, float d, float obj_id) {
 
 const float GreyId = 0.0;
 const float RedId = 1.0;
-const float CastleId = 2.0;
-const float BridgeId = 3.0;
-const float DoorId = 4.0;
-const float GroundId = 5.0;
 const float TestId = 6.0;
 const float TerrainId = 7.0;
 const float SubsurfaceId = 8.0;
+
+const float MonsterBodyId = 9.0;
+const float MonsterMainEyeId = 10.0;
+const float MonsterMouthId = 11.0;
 
 // For testing and debugging
 vec2 test_sdf(vec3 pos, vec2 res) {
@@ -498,80 +537,6 @@ vec2 test_aa(vec3 pos, vec2 res) {
   return res;
 }
 
-float turret_sdf(vec3 pos) {
-  float d = 1e10;
-  float slen = 4.0;
-  float tur_h = 15.0;
-  vec3 tur_span = vec3(slen,tur_h,slen);
-  float wall_th = 0.25;
-  vec3 offset = vec3(wall_th,-wall_th,wall_th);
-  d = op_union(d, sd_tube(pos, tur_span, vec3(0.5,0.0,0.5), offset));
-
-  // windows
-  vec3 rev_pos = revolve(pos, 4);
-  vec3 m_pos = mirror(rev_pos, vec3(0.0), vec3(0.0,0.0,1.0));
-  vec3 win_pos = vec3(0.0, 12.5, 1.0);
-  d = op_sdiff(d, sd_box(m_pos - win_pos, vec3(slen+1.0,2.0,0.5), vec3(0.0,0.5,0.5)), 0.1);
-
-  // ridges
-  vec3 rid_pos = mirror(pos, vec3(0.0), normalize(vec3(1.0,0.0,-1.0)));
-  rid_pos = mirror(rid_pos, vec3(0.0), normalize(vec3(-1.0,0.0,-1.0)));
-  int num_ridges = 4;
-  rid_pos = repeat(rid_pos, vec3(-slen*0.5,tur_h,-slen*0.5), vec3(slen/float(num_ridges),1.0,1.0),ivec3(num_ridges,1,1));
-  d = op_union(d, sd_box(rid_pos, vec3(wall_th*1.5,wall_th*2.0,0.5*wall_th), vec3(0.0)));
-
-  return d;
-}
-
-vec2 castle_sdf(vec3 pos, vec2 res) {
-  float d = res.x;
-
-  float main_len = 30.0;
-  float main_h = 10.0;
-  vec3 main_offset = vec3(1.0,-0.25,1.0);
-  d = op_union(d, sd_tube(pos, vec3(main_len,main_h,main_len), vec3(0.5,0.0,0.5), main_offset));
-  
-  vec3 m_pos = mirror(pos, vec3(0.0), vec3(0.0,0.0,1.0));
-  m_pos = mirror(m_pos, vec3(0.0), vec3(1.0,0.0,0.0));
-  vec3 turret_offset = vec3(main_len*0.5, 0.0, main_len*0.5);
-  d = op_union(d, turret_sdf(m_pos - turret_offset));
-  
-  //d = op_sunion(res.x, d, 0.5);
-  return update_res(res, d, CastleId);
-}
-
-vec2 bridge_sdf(vec3 pos, vec2 res) {
-  float d = res.x;
-
-  // draw bridge
-  float bridge_angle = 0.5*(sin(u_Time/10.0) + 1.0) * pi/2.0;
-  vec3 lpos = local_pos(pos, vec3(0.0,0.0,1.0), bridge_angle, vec3(0.5*30.0,0.0,0.0));
-  d = op_union(d, sd_box(lpos, vec3(10.0,0.2,4.0), vec3(0.0,0.0,0.5)));
-
-  return update_res(res, d, BridgeId);
-}
-
-vec2 door_sdf(vec3 pos, vec2 res) {
-  float d = res.x;
-
-  d = op_union(d, sd_box(pos - vec3(0.5*30.0,0.0,0.0), vec3(0.05,6.0,4.0), vec3(0.0,0.0,0.5)));
-
-  return update_res(res, d, DoorId);
-}
-
-vec2 ground_sdf(vec3 pos, vec2 res) {
-  float d = res.x;
-
-  d = op_union(d, sd_plane(pos, vec3(0.0), vec3(0.0,1.0,0.0)));
-  float moat_ext = 20.0;
-  vec4 elo = op_elongate(pos, vec3(moat_ext,2.0,moat_ext));
-  float moat_d = elo.w + sd_torus(elo.xyz, 2.0, 1.0);
-  d = op_sdiff(d, moat_d, 1.0);
-
-  res = update_res(res, d, GroundId);
-  return res;
-}
-
 float terr_fbm(vec2 pos) {
 	float freq = 1.0;
 	float weight = 0.5;
@@ -629,20 +594,72 @@ vec2 debug_sdf(vec3 pos, vec2 res) {
   return res;
 }
 
+const float head_h = 18.0;
+const float head_r = 10.0;
+const vec3 head_pos = vec3(0.0,head_h,0.0);
+
+vec2 monster_sdf(vec3 pos, vec2 in_res) {
+  
+  // mouth
+  vec3 mouth_local = local_pos(pos, vec3(0.0), 0.0, vec3(0.0,head_h+4.0,-head_r)); 
+  float m_outer_y = 0.6;
+  float m_r_inner = 1.1;
+  float mouth_d = sd_ellipsoid(mouth_local, vec3(head_r,m_outer_y*head_r,head_r));
+  mouth_d = op_diff(mouth_d, sd_ellipsoid(mouth_local, vec3(m_r_inner*head_r,0.8*m_outer_y*head_r,m_r_inner*head_r)));
+  mouth_d = op_intersect(mouth_d, sd_plane(mouth_local, vec3(0.0), vec3(0.0,1.0,0.0)));
+
+  // body
+  float body_d = sd_ellipsoid(pos - head_pos, vec3(head_r));
+  body_d = op_sunion(body_d, sd_capsule(pos, vec3(0.0), vec3(0.0,head_h,0.0), 4.0), 5.0);
+
+  // legs
+  vec3 rev_p = revolve(pos, 6);
+  body_d = op_sunion(body_d,
+      sd_capsule(rev_p, vec3(0.0), vec3(10.0,0.0,0.0), 2.2), 1.0); 
+
+  // eyes
+  vec3 mir_p = mirror(pos, vec3(0.0), vec3(1.0,0.0,0.0));
+  float eye_angle = -0.35*pi;
+  vec3 eye_pos = 0.7*head_r*vec3(cos(eye_angle),0.0,sin(eye_angle))+vec3(0.0,head_h+3.0,0.0);
+  float eye_r = 3.0;
+  float eye_d = sd_sphere(mir_p - eye_pos, eye_r);
+  float socket_d = sd_sphere(mir_p - eye_pos, eye_r + 0.02);
+
+  // compose
+  float d = 1e10;
+  vec2 res;
+  d = op_union(d, body_d);
+  vec2 op_res = op2_sdiff(d, mouth_d, 0.5);
+  d = op_res.x;
+  d = op_sdiff(d, socket_d, 0.75);
+  res = update_res(in_res, d, op_res.y == 0.0 ? MonsterBodyId : MonsterMouthId);
+  d = op_union(d, eye_d);
+  res = update_res(res, d, MonsterMainEyeId);
+
+  return res;
+}
+
+vec2 ground_sdf(vec3 pos, vec2 res) {
+  float d = res.x;
+
+  d = op_union(d, sd_plane(pos, vec3(0.0), vec3(0.0,1.0,0.0)));
+  res = update_res(res, d, GreyId);
+
+  return res;
+}
+
 vec2 world_sdf(vec3 pos) {
   float d = 1e10;          
   vec2 res = vec2(d, 0.0);
 
   res = debug_sdf(pos, res);
+  //res = ground_sdf(pos, res);
+  res = monster_sdf(pos, res);
   //res = test_sdf(pos, res);
   //res = test_aa(pos, res);
   //res = test_ss(pos, res);
-  res = terrain_sdf(pos, res);
+  //res = terrain_sdf(pos, res);
   //res = debug_sdf(pos, res);
-  //res = ground_sdf(pos, res);
-  //res = castle_sdf(pos, res);
-  //res = bridge_sdf(pos, res);
-  //res = door_sdf(pos, res);
 
   return res;
 }
@@ -681,31 +698,6 @@ vec3 world_normal(float obj_id, vec3 pos) {
 
 vec2 world_intersect(vec3 ro, vec3 rd) {
   // TODO - use the boxes to iterate through viable ranges of t
-
-  // BB should be a list of (t_min, t_max) pairs for each box
-  /*
-  // TODO - safe to assume that they are default-initialized?
-  AABB[num_objects] boxes;
-  // TODO - set the boxes for the objects that have them,
-  // and leave the rest uninitialized
-
-  // use the BB to compute the list of active object ids
-  int num_active = 0;
-  float[num_objects] active_objects;
-  for (int i = 0; i < boxes.length(); ++i) {
-    AABB box = boxes[i];
-    if (box.max - box.min != vec3(0.0) || intersects_bb(ro, rd, box)) {
-      active_objects[num_active] = i;  
-    }
-  }
-
-  // activate all objects
-  float[num_objects] active_objects;
-  for (int i = 0; i < num_objects; ++i) {
-    active_objects[i] = float(i);
-  }
-  int num_active = num_objects;
-  */
 
   float t_min = 0.1;
   float t_max = 10000.0;
@@ -752,27 +744,40 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
     case int(RedId):
       material_color = vec3(0.5, 0.0, 0.0);
       break;
-    case int(CastleId):
-      material_color = vec3(0.6);
-      break;
-    case int(BridgeId): {
-      float factor = 1.0-pow(smoothstep(0.0,1.0,sin(10.0*pos.z)), 50.0);
-      material_color = factor*vec3(0.4,0.3,0.2);
+    case int(TestId): {
+      material_color = vec3(0.5,0.0,0.0);
       break;
     }
-    case int(DoorId):
-      material_color = vec3(0.4,0.3,0.2);
+    case int(MonsterBodyId): {
+      material_color = 0.2*vec3(0.43,0.9,0.29);
       break;
-    case int(GroundId): {
-      float noise = surflet_noise(5.0*pos.xz, vec2(23.1, 781.0));
-      vec3 grass_color = 0.5*mix(vec3(0.13,0.39,0.11), vec3(0.07,0.24,0.06), noise);
-      vec3 slope_color = 0.4*mix(vec3(0.48,0.37,0.14), vec3(0.30,0.22,0.08), noise);
-      vec3 col = mix(slope_color, grass_color, smoothstep(0.0,1.0,normal.y));
+    }
+    case int(MonsterMainEyeId): {
+      vec3 left_orien_vec = vec3(1.0,0.75,-1.5);
+      vec3 orien_vec = normalize(
+        pos.x > 0.0 ? left_orien_vec : left_orien_vec*vec3(-1.0,1.0,1.0)
+      );
+      vec3 look_vec = normalize(
+        pos.x > 0.0 ? vec3(1.0,1.0,-1.0) : vec3(0.0,0.0,-1.0)
+      );
+      vec3 pupil_col = vec3(0.83,0.35,0.45);
+      vec3 outer_pupil_col = vec3(104.0,58.0,135.0)/255.0;
+      // main
+      vec3 col = 0.7*vec3(1.0,1.0,0.95);
+      // liner
+      float dot_orien = clamp(dot(orien_vec, normal),0.0,1.0);
+      col = mix(pupil_col, col, smoothstep(0.65,0.7,dot_orien));
+      col = mix(outer_pupil_col, col, smoothstep(0.60, 0.65, dot_orien));
+      // pupils
+      float dot_look = clamp(dot(look_vec, normal),0.0,1.0);
+      col = mix(col, vec3(0.0), smoothstep(0.98,1.0,dot_look));
+      col = mix(col, pupil_col, smoothstep(0.99,1.0,dot_look));
+      
       material_color = col;
       break;
     }
-    case int(TestId): {
-      material_color = vec3(0.5,0.0,0.0);
+    case int(MonsterMouthId): {
+      material_color = 0.2*vec3(0.5,0.01,0.01);
       break;
     }
     case int(TerrainId): {
@@ -811,7 +816,7 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
 
   // lighting
   vec3 key_light_col = vec3(1.64,1.27,0.99);
-  vec3 key_light_dir = normalize(vec3(-1.0, 1.0, 1.0));
+  vec3 key_light_dir = normalize(vec3(1.0, 1.0, 1.0));
   float key_light_amt = clamp(dot(key_light_dir, normal), 0.0, 1.0);
   vec3 fill_light_col = vec3(0.16,0.20,0.28);
   vec3 fill_light_dir = vec3(0.0,1.0,0.0);
@@ -841,6 +846,7 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
     float a = 2.0;
     float b = 0.2;
     //float fog_amt = 1.0 - exp(-pt_dist / 500.0); // simple fog
+		// TODO - flip the points if nor_y > 0
     float nor_y = min(rd.y, -0.001); // formula requires rd.y < 0
     // elevation-based fog
     //float fog_amt = a*exp(-b*ro.y)*(1.0-exp(-b*nor_y*pt_dist))/(b*nor_y);
