@@ -72,7 +72,7 @@ function main() {
   loadScene();
 
   let cam_dist = 50;
-  const camera = new Camera(vec3.fromValues(-cam_dist, cam_dist, -cam_dist), vec3.fromValues(0, 0, 0));
+  const camera = new Camera(vec3.fromValues(10.0, 30, -cam_dist), vec3.fromValues(0, 0, 0));
 
   const renderer = new OpenGLRenderer(canvas);
   renderer.setClearColor(164.0 / 255.0, 233.0 / 255.0, 1.0, 1);

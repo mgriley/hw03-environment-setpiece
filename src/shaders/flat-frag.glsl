@@ -133,6 +133,60 @@ float gradient_noise_2d(vec2 pos) {
   return clamp(val,0.0,1.0);
 }
 
+float gradient_noise_3d(vec3 pos) {
+	vec3 g = floor(pos);
+    vec3 f = fract(pos);
+    vec3 i = f*f*f*f*(f*(f*6.0-15.0)+10.0);
+    
+    vec2 b = vec2(0.0,1.0);
+    
+    vec3 g000 = 2.0*(hash3(g+b.xxx) - 0.5);
+    vec3 g001 = 2.0*(hash3(g+b.xxy) - 0.5);
+    vec3 g010 = 2.0*(hash3(g+b.xyx) - 0.5);
+    vec3 g011 = 2.0*(hash3(g+b.xyy) - 0.5);
+    vec3 g100 = 2.0*(hash3(g+b.yxx) - 0.5);
+    vec3 g101 = 2.0*(hash3(g+b.yxy) - 0.5);
+    vec3 g110 = 2.0*(hash3(g+b.yyx) - 0.5);
+    vec3 g111 = 2.0*(hash3(g+b.yyy) - 0.5);
+    
+    float d000 = dot(g000,f-b.xxx);
+    float d001 = dot(g001,f-b.xxy);
+    float d010 = dot(g010,f-b.xyx);
+    float d011 = dot(g011,f-b.xyy);
+    float d100 = dot(g100,f-b.yxx);
+    float d101 = dot(g101,f-b.yxy);
+    float d110 = dot(g110,f-b.yyx);
+    float d111 = dot(g111,f-b.yyy);
+    
+    return 0.5+0.5*mix(
+    	mix(
+        	mix(d000,d100,i.x),
+            mix(d010,d110, i.x),
+            i.y
+        ),
+        mix(
+        	mix(d001,d101,i.x),
+            mix(d011,d111,i.x),
+            i.y
+        ),
+        i.z
+    );
+}
+
+float fbm_3d(vec3 pos) {
+    float freq = 1.0;
+    float weight = 0.5;
+    float val = 0.0;
+    float weight_sum = 0.0;
+    for (int i = 0; i < 3; ++i) {
+    	val += weight * gradient_noise_3d(pos * freq);
+        weight_sum += weight;
+        weight *= 0.5;
+        freq *= 2.0;
+    }
+    return val / weight_sum;
+}
+
 // SDF functions
 
 float sd_sphere(vec3 p, float r) {
@@ -306,12 +360,19 @@ vec3 repeat_evenly(vec3 pos, vec3 origin, vec3 span, ivec3 count) {
 
 // revolve the point around the y axis, placing it in slice
 // centered about the x axis
-vec3 revolve(vec3 pos, int num_slices) {
+// return the new pos in xyz and the slice num of the pt in w
+vec4 revolve2(vec3 pos, int num_slices) {
   float slice_span = 2.0*pi / float(num_slices);
   float r = length(pos.xz);
-  float angle = mod(atan(pos.z, pos.x)+0.5*slice_span, slice_span) - 0.5*slice_span;
+  float cur_angle = atan(pos.z, pos.x)+0.5*slice_span;
+  float slice_num = floor(cur_angle / slice_span);
+  float angle = mod(cur_angle, slice_span) - 0.5*slice_span;
   vec2 rotated_pos = r * vec2(cos(angle), sin(angle));
-  return vec3(rotated_pos.x, pos.y, rotated_pos.y);
+  return vec4(rotated_pos.x, pos.y, rotated_pos.y, slice_num);
+}
+
+vec3 revolve(vec3 pos, int num_slices) {
+  return revolve2(pos, num_slices).xyz;
 }
 
 // transformations
@@ -613,9 +674,22 @@ vec2 monster_sdf(vec3 pos, vec2 in_res) {
   body_d = op_sunion(body_d, sd_capsule(pos, vec3(0.0), vec3(0.0,head_h,0.0), 4.0), 5.0);
 
   // legs
-  vec3 rev_p = revolve(pos, 6);
+  // TODO - the distortions cause weird black spots, see if can fix
+  // also, the revolution produced a discontinuity, so probably do
+  // a manual revolution
+  int num_legs = 6;
+  vec4 rev_res = revolve2(pos, num_legs);
+  vec3 rev_p = rev_res.xyz;
+  float leg_num = rev_res.w;
+  //vec3 rev_p = pos;
+  //rev_p.y = 1.0*sin(2.0*pi*rev_p.x/20.0)+rev_p.y;
+  float leg_len = 10.0;
+  float cap_r = 2.4 + 0.75*0.5*(sin(2.0*pi*rev_p.x/leg_len)+1.0);
+  //float cap_r = 2.4;
+  float cap_h = 4.0*0.5*(1.0+sin(2.0*2.0*pi*(-leg_num)/float(num_legs)));
+  float cap_z = 0.5*(sin(2.0*2.0*pi*(-leg_num)/float(num_legs))+1.0);
   body_d = op_sunion(body_d,
-      sd_capsule(rev_p, vec3(0.0), vec3(10.0,0.0,0.0), 2.2), 1.0); 
+      sd_capsule(rev_p, vec3(0.0), vec3(leg_len,cap_h,cap_z), cap_r), 2.0); 
 
   // eyes
   vec3 mir_p = mirror(pos, vec3(0.0), vec3(1.0,0.0,0.0));
@@ -625,6 +699,9 @@ vec2 monster_sdf(vec3 pos, vec2 in_res) {
   float eye_d = sd_sphere(mir_p - eye_pos, eye_r);
   float socket_d = sd_sphere(mir_p - eye_pos, eye_r + 0.02);
 
+  // for clipping to +ve y
+  float ground_d = sd_plane(pos, vec3(0.0), vec3(0.0,-1.0,0.0));
+
   // compose
   float d = 1e10;
   vec2 res;
@@ -632,6 +709,7 @@ vec2 monster_sdf(vec3 pos, vec2 in_res) {
   vec2 op_res = op2_sdiff(d, mouth_d, 0.5);
   d = op_res.x;
   d = op_sdiff(d, socket_d, 0.75);
+  d = op_sintersect(d, ground_d, 2.0);
   res = update_res(in_res, d, op_res.y == 0.0 ? MonsterBodyId : MonsterMouthId);
   d = op_union(d, eye_d);
   res = update_res(res, d, MonsterMainEyeId);
@@ -639,11 +717,24 @@ vec2 monster_sdf(vec3 pos, vec2 in_res) {
   return res;
 }
 
+float mountains_sd(vec3 pos) {
+  float origin_dist = length(pos.xz);
+  float trig_dist = 1000.0;
+  float h_trig = smoothstep(trig_dist, trig_dist+100.0, origin_dist);
+  float h = h_trig*100.0*terr_fbm(pos.xz/40.0);
+  return 0.35*(pos.y - h);  
+}
+
 vec2 ground_sdf(vec3 pos, vec2 res) {
   float d = res.x;
 
   d = op_union(d, sd_plane(pos, vec3(0.0), vec3(0.0,1.0,0.0)));
   res = update_res(res, d, GreyId);
+
+  /*
+  d = op_union(d, mountains_sd(pos));
+  res = update_res(res, d, TerrainId);
+  */
 
   return res;
 }
@@ -653,7 +744,7 @@ vec2 world_sdf(vec3 pos) {
   vec2 res = vec2(d, 0.0);
 
   res = debug_sdf(pos, res);
-  //res = ground_sdf(pos, res);
+  res = ground_sdf(pos, res);
   res = monster_sdf(pos, res);
   //res = test_sdf(pos, res);
   //res = test_aa(pos, res);
@@ -733,6 +824,8 @@ float compute_ao(vec3 pos, vec3 nor) {
   }
   return clamp(1.0 - 2.0 * occ, 0.0, 1.0);
 }
+
+const vec3 sun_dir = normalize(vec3(0.6, 0.5, 1.0));
 
 vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
   vec3 final_color = vec3(-1.0);
@@ -816,7 +909,7 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
 
   // lighting
   vec3 key_light_col = vec3(1.64,1.27,0.99);
-  vec3 key_light_dir = normalize(vec3(1.0, 1.0, 1.0));
+  vec3 key_light_dir = sun_dir;
   float key_light_amt = clamp(dot(key_light_dir, normal), 0.0, 1.0);
   vec3 fill_light_col = vec3(0.16,0.20,0.28);
   vec3 fill_light_dir = vec3(0.0,1.0,0.0);
@@ -839,7 +932,6 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
   // fog
   {
     float pt_dist = length(pos - ro);
-    vec3 sun_dir = normalize(vec3(0.0,0.5,1.0));
     float sun_amt = max(dot(key_light_dir, rd), 0.0);
     vec3 fog_color = mix(vec3(0.5,0.6,0.7),
       vec3(1.0,0.9,0.7),pow(sun_amt,2.0));
@@ -876,7 +968,28 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
 }
 
 vec3 background_color(vec3 ro, vec3 rd) {
-  return vec3(0.29,0.56,0.67);
+  // sun (gradually greater highlights while pointing in the sun direction)
+	vec3 light1 = sun_dir;
+	float sundot = clamp(dot(light1, rd),0.0,1.0);
+	vec3 col = vec3(0.2,0.5,0.85)*1.1-rd.y*rd.y*0.5;
+	col += 0.25*vec3(1.0,0.7,0.4)*pow(sundot,5.0);
+	col += 0.25*vec3(1.0,0.8,0.6)*pow(sundot,64.0);
+	col += 0.3*vec3(1.0,0.8,0.6)*pow(sundot,500.0);
+
+	// clouds
+	// intersect with a plane high above the ground
+	float cloud_height = 1000.0;
+	vec2 cloud_pos = ro.xz + (cloud_height-ro.y)/rd.y * rd.xz;
+	//vec2 pos_offset = vec2(iTime / 20.0); // animate later
+	vec2 pos_offset = vec2(0.0);
+	float c_noise = fbm_3d(vec3(cloud_pos/1000.0+pos_offset, 0.0/*iTime/6.0*/));
+	col = mix(col, vec3(1.0,0.95,1.0), smoothstep(0.45,1.0,c_noise));
+
+	// horizon
+	// very slight darkening as rd.y -> 0
+	col = mix(col, 0.68*vec3(0.4,0.65,1.0), pow(1.0-max(rd.y,0.0),16.0));
+
+  return col;
 }
 
 void ray_for_pixel(vec3 eye, vec2 ndc, inout vec3 ro, inout vec3 rd) {
