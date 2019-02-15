@@ -27,12 +27,22 @@ let cam_render_state: any = {
   eye: vec3.fromValues(-1.8, 6.5, -32.0),
   target: vec3.fromValues(-1.6, 3.6, 0.4)
 };
+let cam_mid_state: any = {
+  eye: vec3.fromValues(10, 30, -50),
+  target: vec3.fromValues(0, 0, 0)
+};
+let cam_far_state: any = {
+  eye: vec3.fromValues(130, 288, -369),
+  target: vec3.fromValues(0, 0, 0)
+};
 let cam_prev_state: any = {
   eye: vec3.fromValues(10, 30, -50),
   target: vec3.fromValues(0, 0, 0)
 };
 let cam_to_render_pos: boolean = false;
 let cam_to_last_pos: boolean = false;
+let cam_to_mid_pos: boolean = false;
+let cam_to_far_pos: boolean = false;
 
 function set_camera_from_state(cam: any, state: any) {
   cam.controls.lookAt(state.eye, state.target, [0, 1, 0]);
@@ -53,6 +63,12 @@ function main() {
         break;
       case 'T':
         cam_to_last_pos = true;
+        break;
+      case 'F':
+        cam_to_mid_pos = true;
+        break;
+      case 'G':
+        cam_to_far_pos = true;
         break;
       case 'C':
         let eye = camera.controls.eye;
@@ -99,8 +115,8 @@ function main() {
   // Initial call to load scene
   loadScene();
 
-  let cam_dist = 50;
-  const camera = new Camera(vec3.fromValues(10.0, 30, -cam_dist), vec3.fromValues(0, 0, 0));
+  const camera = new Camera(vec3.fromValues(10.0, 30, -50), vec3.fromValues(0, 0, 0));
+  set_camera_from_state(camera, cam_mid_state);
 
   const renderer = new OpenGLRenderer(canvas);
   renderer.setClearColor(164.0 / 255.0, 233.0 / 255.0, 1.0, 1);
@@ -121,6 +137,14 @@ function main() {
     if (cam_to_last_pos) {
       cam_to_last_pos = false;
       set_camera_from_state(camera, cam_prev_state);
+    }
+    if (cam_to_mid_pos) {
+      cam_to_mid_pos = false;
+      set_camera_from_state(camera, cam_mid_state);
+    }
+    if (cam_to_far_pos) {
+      cam_to_far_pos = false;
+      set_camera_from_state(camera, cam_far_state);
     }
   }
 

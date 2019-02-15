@@ -173,6 +173,38 @@ float gradient_noise_3d(vec3 pos) {
     );
 }
 
+float voronoi_noise_2d(vec2 pos) {
+	vec2 g = floor(pos);
+	vec2 f = fract(pos);
+	
+	float min_dist = 1e10;
+	for (int i = -1; i <= 1; i++) {
+		for (int j = -1; j <= 1; j++) {
+			vec2 offset_pos = vec2(ivec2(i,j));
+			vec2 delta = offset_pos + hash2(g + offset_pos) - f;
+			min_dist = min(min_dist, dot(delta, delta));
+		}
+	}
+	return clamp(sqrt(min_dist),0.0,1.0);
+}
+
+
+float smooth_voronoi_2d(vec2 pos) {
+	vec2 g = floor(pos);
+	vec2 f = fract(pos);
+
+	float exp_weight = 20.0;
+	float sum = 0.0;
+	for (int i = -1; i <= 1; ++i) {
+		for (int j = -1; j <= 1; ++j) {
+			vec2 offset_pos = vec2(ivec2(i, j));
+			vec2 delta = offset_pos + hash2(g + offset_pos) - f;
+			sum += exp(-exp_weight*length(delta));            
+		}
+	}
+	return clamp(-(1.0/exp_weight)*log(sum), 0.0, 1.0);
+}
+
 float fbm_3d(vec3 pos) {
     float freq = 1.0;
     float weight = 0.5;
@@ -603,6 +635,7 @@ vec2 test_aa(vec3 pos, vec2 res) {
   return res;
 }
 
+/*
 float terr_fbm(vec2 pos) {
 	float freq = 1.0;
 	float weight = 0.5;
@@ -616,7 +649,9 @@ float terr_fbm(vec2 pos) {
 	}
 	return val / weight_sum;
 }
+*/
 
+/*
 float sd_terrain(vec3 pos) {
   float h = 60.0*terr_fbm(pos.xz/40.0);
   // scale down the SD so that we don't step too far forwards.
@@ -625,7 +660,9 @@ float sd_terrain(vec3 pos) {
   // iso-surfaces, I think.
   return 0.35*(pos.y - h);  
 }
+*/
 
+/*
 vec2 terrain_sdf(vec3 pos, vec2 res) {
   float d = res.x;
   
@@ -637,6 +674,7 @@ vec2 terrain_sdf(vec3 pos, vec2 res) {
 
   return res;
 }
+*/
 
 vec2 test_ss(vec3 pos, vec2 res) {
   float d = res.x;
@@ -729,11 +767,24 @@ vec2 monster_sdf(vec3 pos, vec2 in_res) {
   return res;
 }
 
+float terr_fbm(vec2 pos) {
+    float freq = 1.0;
+    float weight = 0.5;
+    float val = 0.0;
+    float weight_sum = 0.0;
+    for (int i = 0; i < 1; ++i) {
+    	val += weight * smooth_voronoi_2d(pos * freq);
+        weight_sum += weight;
+        weight *= 0.5;
+        freq *= 2.0;
+    }
+    return val / weight_sum;
+}
+
 float mountains_sd(vec3 pos) {
-  float origin_dist = length(pos.xz);
-  float trig_dist = 1000.0;
-  float h_trig = smoothstep(trig_dist, trig_dist+100.0, origin_dist);
-  float h = h_trig*100.0*terr_fbm(pos.xz/40.0);
+  float h_trig = smoothstep(800.0, 1100.0, length(pos.xz));
+  float hot_dist = 1.0 - smoothstep(0.0, 300.0, length(pos.xz - vec2(1000.0,1000.0)));
+  float h = (1.0+2.0*hot_dist)*h_trig*400.0*terr_fbm(pos.xz/300.0);
   return 0.35*(pos.y - h);  
 }
 
@@ -743,10 +794,8 @@ vec2 ground_sdf(vec3 pos, vec2 res) {
   d = op_union(d, sd_plane(pos, vec3(0.0), vec3(0.0,1.0,0.0)));
   res = update_res(res, d, GreyId);
 
-  /*
   d = op_union(d, mountains_sd(pos));
   res = update_res(res, d, TerrainId);
-  */
 
   return res;
 }
@@ -758,11 +807,11 @@ vec2 world_sdf(vec3 pos) {
   res = debug_sdf(pos, res);
   res = ground_sdf(pos, res);
   res = monster_sdf(pos, res);
+
   //res = test_sdf(pos, res);
   //res = test_aa(pos, res);
   //res = test_ss(pos, res);
   //res = terrain_sdf(pos, res);
-  //res = debug_sdf(pos, res);
 
   return res;
 }
@@ -946,22 +995,23 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
 
   vec3 out_col = lighting * material_color;
 
-  /*
   // fog
+  /*
   {
     float pt_dist = length(pos - ro);
     float sun_amt = max(dot(key_light_dir, rd), 0.0);
-    vec3 fog_color = mix(vec3(0.5,0.6,0.7),
-      vec3(1.0,0.9,0.7),pow(sun_amt,2.0));
+    vec3 fog_color = mix(0.2*vec3(0.5,0.6,0.7),
+      0.2*vec3(1.0,0.9,0.7),pow(sun_amt,2.0));
     float a = 2.0;
     float b = 0.2;
-    //float fog_amt = 1.0 - exp(-pt_dist / 500.0); // simple fog
-		// TODO - flip the points if nor_y > 0
-    float nor_y = min(rd.y, -0.001); // formula requires rd.y < 0
+    // simple distance-fog
+    float fog_amt = 1.0 - exp(-pt_dist / 800.0);
+
     // elevation-based fog
+		// TODO - flip the points if nor_y > 0
+    //float nor_y = min(rd.y, -0.001); // formula requires rd.y < 0
     //float fog_amt = a*exp(-b*ro.y)*(1.0-exp(-b*nor_y*pt_dist))/(b*nor_y);
-    // simple distance fog
-    float fog_amt = 1.0-exp(-0.001*pt_dist);
+
     fog_amt = clamp(fog_amt, 0.0, 1.0);
     out_col = mix(out_col, fog_color, fog_amt);
     //out_col = vec3(fog_amt);
