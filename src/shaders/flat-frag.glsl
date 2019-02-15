@@ -371,6 +371,10 @@ vec4 revolve2(vec3 pos, int num_slices) {
   return vec4(rotated_pos.x, pos.y, rotated_pos.y, slice_num);
 }
 
+vec3 rotate_y(vec3 pos, float angle) {
+  return vec3(cos(angle)*pos.x - sin(angle)*pos.z, pos.y, sin(angle)*pos.x + cos(angle)*pos.z);
+}
+
 vec3 revolve(vec3 pos, int num_slices) {
   return revolve2(pos, num_slices).xyz;
 }
@@ -416,6 +420,7 @@ const float SubsurfaceId = 8.0;
 const float MonsterBodyId = 9.0;
 const float MonsterMainEyeId = 10.0;
 const float MonsterMouthId = 11.0;
+const float MonsterEyeLinerId = 12.0;
 
 // For testing and debugging
 vec2 test_sdf(vec3 pos, vec2 res) {
@@ -674,22 +679,21 @@ vec2 monster_sdf(vec3 pos, vec2 in_res) {
   body_d = op_sunion(body_d, sd_capsule(pos, vec3(0.0), vec3(0.0,head_h,0.0), 4.0), 5.0);
 
   // legs
-  // TODO - the distortions cause weird black spots, see if can fix
-  // also, the revolution produced a discontinuity, so probably do
-  // a manual revolution
   int num_legs = 6;
-  vec4 rev_res = revolve2(pos, num_legs);
-  vec3 rev_p = rev_res.xyz;
-  float leg_num = rev_res.w;
-  //vec3 rev_p = pos;
-  //rev_p.y = 1.0*sin(2.0*pi*rev_p.x/20.0)+rev_p.y;
-  float leg_len = 10.0;
-  float cap_r = 2.4 + 0.75*0.5*(sin(2.0*pi*rev_p.x/leg_len)+1.0);
-  //float cap_r = 2.4;
-  float cap_h = 4.0*0.5*(1.0+sin(2.0*2.0*pi*(-leg_num)/float(num_legs)));
-  float cap_z = 0.5*(sin(2.0*2.0*pi*(-leg_num)/float(num_legs))+1.0);
-  body_d = op_sunion(body_d,
-      sd_capsule(rev_p, vec3(0.0), vec3(leg_len,cap_h,cap_z), cap_r), 2.0); 
+  vec3 rev_p = pos;
+  float angle_inc = 2.0*pi / float(num_legs);
+  for (int i = 0; i < num_legs; ++i) {
+    float leg_num = float(i);
+    rev_p = rotate_y(rev_p, angle_inc);
+    float cap_r = 2.4;
+    float cap_h = 4.0*0.5*(1.0+sin(2.0*2.0*pi*(leg_num + 4.0)/float(num_legs)));
+    float cap_z = 0.5*(sin(2.0*2.0*pi*(-leg_num)/float(num_legs))+1.0);
+    vec3 pt_b = vec3(10.0, cap_h, cap_z);
+    body_d = op_sunion(body_d,
+        sd_capsule(rev_p, vec3(0.0), pt_b, cap_r), 2.0); 
+    body_d = op_sunion(body_d,
+        sd_ellipsoid(rev_p - pt_b, vec3(cap_r)), 2.0);
+  }
 
   // eyes
   vec3 mir_p = mirror(pos, vec3(0.0), vec3(1.0,0.0,0.0));
@@ -698,6 +702,10 @@ vec2 monster_sdf(vec3 pos, vec2 in_res) {
   float eye_r = 3.0;
   float eye_d = sd_sphere(mir_p - eye_pos, eye_r);
   float socket_d = sd_sphere(mir_p - eye_pos, eye_r + 0.02);
+  float liner_d = sd_sphere(mir_p - eye_pos, eye_r + 0.001);
+  vec3 head_to_eye = normalize(eye_pos - head_pos);
+  liner_d = op_sintersect(
+    sd_plane(mir_p, eye_pos+0.0*head_to_eye, -head_to_eye), liner_d, 1.0);
 
   // for clipping to +ve y
   float ground_d = sd_plane(pos, vec3(0.0), vec3(0.0,-1.0,0.0));
@@ -712,7 +720,11 @@ vec2 monster_sdf(vec3 pos, vec2 in_res) {
   d = op_sintersect(d, ground_d, 2.0);
   res = update_res(in_res, d, op_res.y == 0.0 ? MonsterBodyId : MonsterMouthId);
   d = op_union(d, eye_d);
+  //d = op_sunion(d, eye_d,0.5);
   res = update_res(res, d, MonsterMainEyeId);
+  //vec2 eye_res = op2_sunion(d, liner_d, 1.0);
+  //d = eye_res.x;
+  //res = update_res(res, d, MonsterMainEyeId);//eye_res.y == 0.0 ? MonsterMainEyeId : MonsterEyeLinerId);
 
   return res;
 }
@@ -858,15 +870,21 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
       // main
       vec3 col = 0.7*vec3(1.0,1.0,0.95);
       // liner
+      /*
       float dot_orien = clamp(dot(orien_vec, normal),0.0,1.0);
       col = mix(pupil_col, col, smoothstep(0.65,0.7,dot_orien));
       col = mix(outer_pupil_col, col, smoothstep(0.60, 0.65, dot_orien));
+      */
       // pupils
       float dot_look = clamp(dot(look_vec, normal),0.0,1.0);
-      col = mix(col, vec3(0.0), smoothstep(0.98,1.0,dot_look));
-      col = mix(col, pupil_col, smoothstep(0.99,1.0,dot_look));
+      col = mix(col, vec3(0.0), smoothstep(0.98,0.985,dot_look));
+      col = mix(col, pupil_col, smoothstep(0.99,0.995,dot_look));
       
       material_color = col;
+      break;
+    }
+    case int(MonsterEyeLinerId): {
+      material_color = vec3(0.5,0.0,0.0);
       break;
     }
     case int(MonsterMouthId): {
