@@ -58,19 +58,19 @@ function main() {
   window.addEventListener('keypress', function (e) {
     //console.log('pressed: ', e.key);
     switch(e.key) {
-      case 'R':
+      case 'r':
         cam_to_render_pos = true;
         break;
-      case 'T':
+      case 't':
         cam_to_last_pos = true;
         break;
-      case 'F':
+      case 'f':
         cam_to_mid_pos = true;
         break;
-      case 'G':
+      case 'g':
         cam_to_far_pos = true;
         break;
-      case 'C':
+      case 'c':
         let eye = camera.controls.eye;
         let center = camera.controls.center;
         let up = camera.controls.up;
@@ -116,7 +116,7 @@ function main() {
   loadScene();
 
   const camera = new Camera(vec3.fromValues(10.0, 30, -50), vec3.fromValues(0, 0, 0));
-  set_camera_from_state(camera, cam_mid_state);
+  set_camera_from_state(camera, cam_render_state);
 
   const renderer = new OpenGLRenderer(canvas);
   renderer.setClearColor(164.0 / 255.0, 233.0 / 255.0, 1.0, 1);

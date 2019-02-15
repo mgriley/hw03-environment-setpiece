@@ -802,7 +802,9 @@ float terr_fbm(vec2 pos) {
 float mountains_sd(vec3 pos) {
   float h_trig = smoothstep(800.0, 1100.0, length(pos.xz));
   float hot_dist = 1.0 - smoothstep(0.0, 300.0, length(pos.xz - vec2(1000.0,1000.0)));
-  float h = (1.0+2.0*hot_dist)*h_trig*400.0*terr_fbm(pos.xz/300.0);
+  float max_h = (1.0+2.0*hot_dist)*h_trig*400.0;
+  float h = max_h*terr_fbm(pos.xz/300.0);
+  //h = max(h, 0.1*smooth_grad_2d(2.0*pos.xz));
   return 0.25*(pos.y - h);  
 }
 
@@ -980,29 +982,17 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
       break;
     }
     case int(LandscapeId): {
-			vec3 brown = 0.5*vec3(0.45,.30,0.15);
-			vec3 green = 0.5*vec3(0.1,.20,0.10);
-      vec3 snow = 0.2*vec3(1.0,0.95,1.0);
-      vec3 eh_col = 0.33*vec3(174.0,135.0,145.0)/255.0;
-      vec3 rock = 0.4*vec3(127.0,70.0,52.0)/255.0;
-      //vec3 rock_2 = vec3(41.0,23.0,17.0)/255.0;
+      vec3 dirt_a = 0.2*vec3(68.0,52.0,27.0)/100.0;
+      vec3 dirt_b = 0.2*vec3(59.0,42.0,17.0)/100.0;
 
-      vec3 col_a = vec3(42.0, 27.0, 49.0)/255.0;
-      vec3 col_b = 0.5*vec3(110.0, 71.0, 130.0)/255.0;
-
-      float n = smooth_grad_2d(pos.xz/50.0);
-      //float vn = voronoi_2d(vec2(pos.x,2.0*pos.z)*100.0);
-      float fn = fbm_2d(pos.xz*10.0);
-      vec3 col = col_b;
-      col = mix(col, col_a, smoothstep(0.6,0.7,normal.y));
-      float amt_grass = smoothstep(0.2,1.0,normal.y);
-      amt_grass *= 1.0 - smoothstep(1.0,200.0,pos.y);
-      col = mix(col, rock, amt_grass);
-      //col = mix(col, rock_2, vn*smoothstep(0.9,1.0,normal.y));
-      //col = mix(col, green, fn);
-
-      //col = mix(col, brown, smoothstep(0.7, 1.0, normal.y));
-      //col = mix(col, green, smoothstep(0.9, 1.0, normal.y));
+      float n = fbm_2d(2.0*pos.xz);
+      float n2 = fbm_2d(2.0*(pos.xz + vec2(100.0)));
+      vec3 col = dirt_a;
+      //col = mix(col, dirt_b, smoothstep(0.5,0.6,n));
+      // arbitrarily perturb the normal of the ground
+      // to make the ground look gritty
+      float is_ground = smoothstep(0.8,1.0,normal.y);
+      normal = normalize(normal + is_ground*0.75*vec3(n-0.5,0.0,n2-0.5));
 
       material_color = col;
       break;
