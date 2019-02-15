@@ -789,6 +789,9 @@ vec2 monster_sdf(vec3 pos, vec2 in_res) {
 vec2 person_sdf(vec3 pos, vec2 res) {
   float d = 1e10;
 
+  float scale = 1.0/10.0;
+  pos = local_pos(pos, vec3(0.0,1.0,0.0), -pi/12.0, vec3(0.0,0.0,-20.0)) / scale;
+
   // stick figure in fighting stance
   float torso_len = 5.0;
   float l_r = 0.5; // limb radius
@@ -823,7 +826,7 @@ vec2 person_sdf(vec3 pos, vec2 res) {
   d = op_sunion(d, sd_capsule(pos, right_elbow_pos, right_hand_pos, l_r), s_amt);
   d = op_sunion(d, sd_capsule(pos, neck_pos, head_pos, l_r), s_amt);
   d = op_sunion(d, sd_sphere(pos - head_pos, head_r), 0.125);
-  res = update_res(res, d, PersonId);
+  res = update_res(res, d*scale, PersonId);
 
   // weapon
   vec3 sword_axis = normalize(look_dir + vec3(0.0,6.0,0.0));
@@ -832,7 +835,7 @@ vec2 person_sdf(vec3 pos, vec2 res) {
   d = op_union(d, sd_capsule(pos, grip_pos-sword_axis*0.75, grip_pos+sword_axis*0.75, 0.5*l_r));
   d = op_union(d, sd_capsule(pos, grip_pos, grip_pos + sword_axis*15.0, 0.1));
   // TODO
-  res = update_res(res, d, PersonId);
+  res = update_res(res, d*scale, PersonId);
 
   return res;
 }
@@ -864,7 +867,7 @@ vec2 ground_sdf(vec3 pos, vec2 res) {
   float d = res.x;
 
   d = op_union(d, sd_plane(pos, vec3(0.0), vec3(0.0,1.0,0.0)));
-  d = op_union(d, mountains_sd(pos));
+  //d = op_union(d, mountains_sd(pos));
   res = update_res(res, d, LandscapeId);
 
   /*
@@ -881,8 +884,8 @@ vec2 world_sdf(vec3 pos) {
   vec2 res = vec2(d, 0.0);
 
   res = debug_sdf(pos, res);
-  //res = ground_sdf(pos, res);
-  //res = monster_sdf(pos, res);
+  res = ground_sdf(pos, res);
+  res = monster_sdf(pos, res);
   res = person_sdf(pos, res);
 
   //res = test_sdf(pos, res);
@@ -963,7 +966,7 @@ float compute_ao(vec3 pos, vec3 nor) {
   return clamp(1.0 - 2.0 * occ, 0.0, 1.0);
 }
 
-const vec3 sun_dir = normalize(vec3(0.6, 0.5, 1.0));
+const vec3 sun_dir = normalize(vec3(2.0, 0.5, 1.0));
 
 vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
   vec3 final_color = vec3(-1.0);
@@ -1035,17 +1038,24 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
       break;
     }
     case int(LandscapeId): {
-      vec3 dirt_a = 0.2*vec3(68.0,52.0,27.0)/100.0;
-      vec3 dirt_b = 0.2*vec3(59.0,42.0,17.0)/100.0;
+      //vec3 dirt_a = 0.2*vec3(68.0,52.0,27.0)/100.0;
+      //vec3 dirt_b = 0.2*vec3(59.0,42.0,17.0)/100.0;
+      vec3 sand = 0.75*vec3(0.83,0.78,0.68);
 
-      float n = fbm_2d(2.0*pos.xz);
-      float n2 = fbm_2d(2.0*(pos.xz + vec2(100.0)));
-      vec3 col = dirt_a;
+      // works well for dirt
+      //float n = fbm_2d(2.0*pos.xz);
+      //float n2 = fbm_2d(2.0*(pos.xz + vec2(100.0)));
+
+      // attempt at sand
+      float n = fbm_2d(8.0*pos.xz);
+      float n2 = fbm_2d(8.0*(pos.xz + vec2(100.0)));
+
+      vec3 col = sand;
       //col = mix(col, dirt_b, smoothstep(0.5,0.6,n));
       // arbitrarily perturb the normal of the ground
       // to make the ground look gritty
       float is_ground = smoothstep(0.8,1.0,normal.y);
-      normal = normalize(normal + is_ground*0.75*vec3(n-0.5,0.0,n2-0.5));
+      normal = normalize(normal + is_ground*0.1*vec3(n-0.5,0.0,n2-0.5));
 
       material_color = col;
       break;
