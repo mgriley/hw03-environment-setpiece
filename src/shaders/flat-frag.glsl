@@ -173,7 +173,7 @@ float gradient_noise_3d(vec3 pos) {
     );
 }
 
-float voronoi_noise_2d(vec2 pos) {
+float voronoi_2d(vec2 pos) {
 	vec2 g = floor(pos);
 	vec2 f = fract(pos);
 	
@@ -188,12 +188,11 @@ float voronoi_noise_2d(vec2 pos) {
 	return clamp(sqrt(min_dist),0.0,1.0);
 }
 
-
 float smooth_voronoi_2d(vec2 pos) {
 	vec2 g = floor(pos);
 	vec2 f = fract(pos);
 
-	float exp_weight = 20.0;
+	float exp_weight = 40.0;
 	float sum = 0.0;
 	for (int i = -1; i <= 1; ++i) {
 		for (int j = -1; j <= 1; ++j) {
@@ -203,6 +202,20 @@ float smooth_voronoi_2d(vec2 pos) {
 		}
 	}
 	return clamp(-(1.0/exp_weight)*log(sum), 0.0, 1.0);
+}
+
+float fbm_2d(vec2 pos) {
+    float freq = 1.0;
+    float weight = 0.5;
+    float val = 0.0;
+    float weight_sum = 0.0;
+    for (int i = 0; i < 3; ++i) {
+    	val += weight * gradient_noise_2d(pos * freq);
+        weight_sum += weight;
+        weight *= 0.5;
+        freq *= 2.0;
+    }
+    return val / weight_sum;
 }
 
 float fbm_3d(vec3 pos) {
@@ -453,6 +466,9 @@ const float MonsterBodyId = 9.0;
 const float MonsterMainEyeId = 10.0;
 const float MonsterMouthId = 11.0;
 const float MonsterEyeLinerId = 12.0;
+
+const float LandscapeId = 13.0;
+const float FoliageId = 14.0;
 
 // For testing and debugging
 vec2 test_sdf(vec3 pos, vec2 res) {
@@ -740,6 +756,8 @@ vec2 monster_sdf(vec3 pos, vec2 in_res) {
   float eye_r = 3.0;
   float eye_d = sd_sphere(mir_p - eye_pos, eye_r);
   float socket_d = sd_sphere(mir_p - eye_pos, eye_r + 0.02);
+  // required to prevent cutting into the mouth
+  socket_d = op_intersect(socket_d, -sd_sphere(pos - head_pos,head_r*0.9));
   float liner_d = sd_sphere(mir_p - eye_pos, eye_r + 0.001);
   vec3 head_to_eye = normalize(eye_pos - head_pos);
   liner_d = op_sintersect(
@@ -754,7 +772,7 @@ vec2 monster_sdf(vec3 pos, vec2 in_res) {
   d = op_union(d, body_d);
   vec2 op_res = op2_sdiff(d, mouth_d, 0.5);
   d = op_res.x;
-  d = op_sdiff(d, socket_d, 0.75);
+  //d = op_sdiff(d, socket_d, 0.75);
   d = op_sintersect(d, ground_d, 2.0);
   res = update_res(in_res, d, op_res.y == 0.0 ? MonsterBodyId : MonsterMouthId);
   d = op_union(d, eye_d);
@@ -785,17 +803,21 @@ float mountains_sd(vec3 pos) {
   float h_trig = smoothstep(800.0, 1100.0, length(pos.xz));
   float hot_dist = 1.0 - smoothstep(0.0, 300.0, length(pos.xz - vec2(1000.0,1000.0)));
   float h = (1.0+2.0*hot_dist)*h_trig*400.0*terr_fbm(pos.xz/300.0);
-  return 0.35*(pos.y - h);  
+  return 0.25*(pos.y - h);  
 }
 
 vec2 ground_sdf(vec3 pos, vec2 res) {
   float d = res.x;
 
   d = op_union(d, sd_plane(pos, vec3(0.0), vec3(0.0,1.0,0.0)));
-  res = update_res(res, d, GreyId);
-
   d = op_union(d, mountains_sd(pos));
-  res = update_res(res, d, TerrainId);
+  res = update_res(res, d, LandscapeId);
+
+  /*
+  vec3 rep_p = repeat(pos, vec3(-30.0,0.0,-30.0), vec3(1.0), ivec3(10,1,10));
+  d = op_union(d, sd_sphere(rep_p, 0.5));
+  res = update_res(res, d, FoliageId);
+  */
 
   return res;
 }
@@ -942,6 +964,7 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
     }
     case int(TerrainId): {
 			vec3 col = vec3(0.05,0.05,0.05);
+      vec3 base = 0.2*vec3(174.0,135.0,145.0)/255.0;
 
 			vec3 brown = 0.5*vec3(0.45,.30,0.15);
 			//vec3 green = 0.63*vec3(0.1,.20,0.10);
@@ -953,6 +976,39 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
       float snow_f = normal.y * pow(pos.y / 10.0,2.0);
       col = mix(col, snow, snow_f*smoothstep(0.5,1.0,n));
 
+      material_color = col;
+      break;
+    }
+    case int(LandscapeId): {
+			vec3 brown = 0.5*vec3(0.45,.30,0.15);
+			vec3 green = 0.5*vec3(0.1,.20,0.10);
+      vec3 snow = 0.2*vec3(1.0,0.95,1.0);
+      vec3 eh_col = 0.33*vec3(174.0,135.0,145.0)/255.0;
+      vec3 rock = 0.4*vec3(127.0,70.0,52.0)/255.0;
+      //vec3 rock_2 = vec3(41.0,23.0,17.0)/255.0;
+
+      vec3 col_a = vec3(42.0, 27.0, 49.0)/255.0;
+      vec3 col_b = 0.5*vec3(110.0, 71.0, 130.0)/255.0;
+
+      float n = smooth_grad_2d(pos.xz/50.0);
+      //float vn = voronoi_2d(vec2(pos.x,2.0*pos.z)*100.0);
+      float fn = fbm_2d(pos.xz*10.0);
+      vec3 col = col_b;
+      col = mix(col, col_a, smoothstep(0.6,0.7,normal.y));
+      float amt_grass = smoothstep(0.2,1.0,normal.y);
+      amt_grass *= 1.0 - smoothstep(1.0,200.0,pos.y);
+      col = mix(col, rock, amt_grass);
+      //col = mix(col, rock_2, vn*smoothstep(0.9,1.0,normal.y));
+      //col = mix(col, green, fn);
+
+      //col = mix(col, brown, smoothstep(0.7, 1.0, normal.y));
+      //col = mix(col, green, smoothstep(0.9, 1.0, normal.y));
+
+      material_color = col;
+      break;
+    }
+    case int(FoliageId): {
+      vec3 col = vec3(0.0,0.2,0.0);
       material_color = col;
       break;
     }
@@ -975,7 +1031,7 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
   }
 
   // lighting
-  vec3 key_light_col = vec3(1.64,1.27,0.99);
+  vec3 key_light_col = 2.0*vec3(1.64,1.27,0.99);
   vec3 key_light_dir = sun_dir;
   float key_light_amt = clamp(dot(key_light_dir, normal), 0.0, 1.0);
   vec3 fill_light_col = vec3(0.16,0.20,0.28);
