@@ -469,6 +469,7 @@ const float MonsterEyeLinerId = 12.0;
 
 const float LandscapeId = 13.0;
 const float FoliageId = 14.0;
+const float PersonId = 15.0;
 
 // For testing and debugging
 vec2 test_sdf(vec3 pos, vec2 res) {
@@ -785,6 +786,57 @@ vec2 monster_sdf(vec3 pos, vec2 in_res) {
   return res;
 }
 
+vec2 person_sdf(vec3 pos, vec2 res) {
+  float d = 1e10;
+
+  // stick figure in fighting stance
+  float torso_len = 5.0;
+  float l_r = 0.5; // limb radius
+  float head_r = 2.5 * l_r;
+  vec3 m_plane = normalize(vec3(-1.0,0.0,-1.0));
+  vec3 look_dir = -cross(m_plane, vec3(0.0,1.0,0.0));
+  vec3 hip_pos = vec3(0.0,torso_len*1.5,0.0);
+  vec3 neck_pos = hip_pos + vec3(0.0,torso_len,0.0) + 0.5*look_dir;
+  vec3 head_pos = neck_pos + look_dir*0.75 + vec3(0.0,2.0*head_r,0.0);
+  vec3 left_foot_pos = vec3(2.0, 0.0, 2.0);
+  vec3 right_foot_pos = left_foot_pos * vec3(-1.0,1.0,-1.0);
+  vec3 left_knee_pos = 0.5*(hip_pos + left_foot_pos) + 0.5*look_dir;
+  vec3 right_knee_pos = mirror(left_knee_pos, vec3(hip_pos), m_plane);
+  vec3 left_elbow_pos = neck_pos + look_dir*2.0 - m_plane*2.0 + vec3(0.0,-3.0,0.0);
+  vec3 right_elbow_pos = mirror(left_elbow_pos, vec3(neck_pos), m_plane);
+  vec3 left_hand_pos = hip_pos + look_dir*3.0 + vec3(0.0,2.0,2.0);
+  vec3 right_hand_pos = left_hand_pos;
+  vec3 left_sh_pos = neck_pos - 1.0*m_plane;
+  vec3 right_sh_pos = mirror(left_sh_pos, neck_pos, m_plane);
+
+  float s_amt = 0.1;
+  d = sd_capsule(pos, hip_pos, neck_pos, l_r);
+  d = op_sunion(d, sd_capsule(pos, left_foot_pos, left_knee_pos, l_r), s_amt);
+  d = op_sunion(d, sd_capsule(pos, left_knee_pos, hip_pos, l_r), s_amt);
+  d = op_sunion(d, sd_capsule(pos, right_foot_pos, right_knee_pos, l_r), s_amt);
+  d = op_sunion(d, sd_capsule(pos, right_knee_pos, hip_pos, l_r), s_amt);
+  d = op_sunion(d, sd_capsule(pos, neck_pos, left_sh_pos, l_r), s_amt);
+  d = op_sunion(d, sd_capsule(pos, neck_pos, right_sh_pos, l_r), s_amt);
+  d = op_sunion(d, sd_capsule(pos, left_sh_pos, left_elbow_pos, l_r), s_amt);
+  d = op_sunion(d, sd_capsule(pos, left_elbow_pos, left_hand_pos, l_r), s_amt);
+  d = op_sunion(d, sd_capsule(pos, right_sh_pos, right_elbow_pos, l_r), s_amt);
+  d = op_sunion(d, sd_capsule(pos, right_elbow_pos, right_hand_pos, l_r), s_amt);
+  d = op_sunion(d, sd_capsule(pos, neck_pos, head_pos, l_r), s_amt);
+  d = op_sunion(d, sd_sphere(pos - head_pos, head_r), 0.125);
+  res = update_res(res, d, PersonId);
+
+  // weapon
+  vec3 sword_axis = normalize(look_dir + vec3(0.0,6.0,0.0));
+  vec3 grip_pos = right_hand_pos;
+  
+  d = op_union(d, sd_capsule(pos, grip_pos-sword_axis*0.75, grip_pos+sword_axis*0.75, 0.5*l_r));
+  d = op_union(d, sd_capsule(pos, grip_pos, grip_pos + sword_axis*15.0, 0.1));
+  // TODO
+  res = update_res(res, d, PersonId);
+
+  return res;
+}
+
 float terr_fbm(vec2 pos) {
     float freq = 1.0;
     float weight = 0.5;
@@ -829,8 +881,9 @@ vec2 world_sdf(vec3 pos) {
   vec2 res = vec2(d, 0.0);
 
   res = debug_sdf(pos, res);
-  res = ground_sdf(pos, res);
-  res = monster_sdf(pos, res);
+  //res = ground_sdf(pos, res);
+  //res = monster_sdf(pos, res);
+  res = person_sdf(pos, res);
 
   //res = test_sdf(pos, res);
   //res = test_aa(pos, res);
@@ -997,6 +1050,11 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
       material_color = col;
       break;
     }
+    case int(PersonId): {
+      vec3 col = vec3(0.05);
+      material_color = col;
+      break;
+    }
     case int(FoliageId): {
       vec3 col = vec3(0.0,0.2,0.0);
       material_color = col;
@@ -1042,7 +1100,6 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
   vec3 out_col = lighting * material_color;
 
   // fog
-  /*
   {
     float pt_dist = length(pos - ro);
     float sun_amt = max(dot(key_light_dir, rd), 0.0);
@@ -1062,7 +1119,6 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
     out_col = mix(out_col, fog_color, fog_amt);
     //out_col = vec3(fog_amt);
   }
-  */
 
   // gamma correction
   out_col = pow(out_col, vec3(1.0/2.2));
