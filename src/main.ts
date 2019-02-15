@@ -21,6 +21,23 @@ const controls = {
 let square: Square;
 let time: number = 0;
 
+// some convenient camera controls for switching to/from the
+// view that the final scene will be seen from
+let cam_render_state: any = {
+  eye: vec3.fromValues(-1.8, 6.5, -32.0),
+  target: vec3.fromValues(-1.6, 3.6, 0.4)
+};
+let cam_prev_state: any = {
+  eye: vec3.fromValues(10, 30, -50),
+  target: vec3.fromValues(0, 0, 0)
+};
+let cam_to_render_pos: boolean = false;
+let cam_to_last_pos: boolean = false;
+
+function set_camera_from_state(cam: any, state: any) {
+  cam.controls.lookAt(state.eye, state.target, [0, 1, 0]);
+}
+
 function loadScene() {
   square = new Square(vec3.fromValues(0, 0, 0));
   square.create();
@@ -29,9 +46,20 @@ function loadScene() {
 
 function main() {
   window.addEventListener('keypress', function (e) {
-    // console.log(e.key);
+    //console.log('pressed: ', e.key);
     switch(e.key) {
-      // Use this if you wish
+      case 'R':
+        cam_to_render_pos = true;
+        break;
+      case 'T':
+        cam_to_last_pos = true;
+        break;
+      case 'C':
+        let eye = camera.controls.eye;
+        let center = camera.controls.center;
+        let up = camera.controls.up;
+        console.log(`eye: ${eye}\ntarget: ${center}\nup: ${up}`);
+        break;
     }
   }, false);
 
@@ -84,7 +112,16 @@ function main() {
   ]);
 
   function processKeyPresses() {
-    // Use this if you wish
+    if (cam_to_render_pos) {
+      cam_to_render_pos = false;
+      vec3.copy(cam_prev_state.eye, camera.controls.eye);
+      vec3.copy(cam_prev_state.target, camera.controls.center);
+      set_camera_from_state(camera, cam_render_state);
+    }
+    if (cam_to_last_pos) {
+      cam_to_last_pos = false;
+      set_camera_from_state(camera, cam_prev_state);
+    }
   }
 
   // This function will be called every frame
