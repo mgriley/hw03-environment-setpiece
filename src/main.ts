@@ -118,13 +118,17 @@ function main() {
   const camera = new Camera(vec3.fromValues(10.0, 30, -50), vec3.fromValues(0, 0, 0));
   set_camera_from_state(camera, cam_render_state);
 
-  const renderer = new OpenGLRenderer(canvas);
+  const renderer = new OpenGLRenderer(canvas, window.innerWidth, window.innerHeight);
   renderer.setClearColor(164.0 / 255.0, 233.0 / 255.0, 1.0, 1);
   gl.enable(gl.DEPTH_TEST);
 
   const flat = new ShaderProgram([
     new Shader(gl.VERTEX_SHADER, require('./shaders/flat-vert.glsl')),
     new Shader(gl.FRAGMENT_SHADER, require('./shaders/flat-frag.glsl')),
+  ]);
+  const post = new ShaderProgram([
+    new Shader(gl.VERTEX_SHADER, require('./shaders/post-vert.glsl')),
+    new Shader(gl.FRAGMENT_SHADER, require('./shaders/post-frag.glsl')),
   ]);
 
   function processKeyPresses() {
@@ -152,13 +156,9 @@ function main() {
   function tick() {
     camera.update();
     stats.begin();
-    gl.viewport(0, 0, window.innerWidth, window.innerHeight);
-    renderer.clear();
     processKeyPresses();
     flat.setControls(controls);
-    renderer.render(camera, flat, [
-      square,
-    ], time);
+    renderer.render(camera, flat, post, square, time);
     time++;
     stats.end();
 
