@@ -108,6 +108,12 @@ function main() {
   if (!gl) {
     alert('WebGL 2 not supported!');
   }
+  // this is required to render to floating point format textures
+  var ext = gl.getExtension('EXT_color_buffer_float');
+  if (!ext) {
+    alert('EXT_color_buffer_float not supported!');
+  }
+
   // `setGL` is a function imported above which sets the value of `gl` in the `globals.ts` module.
   // Later, we can import `gl` from `globals.ts` to access it
   setGL(gl);
@@ -119,7 +125,6 @@ function main() {
   set_camera_from_state(camera, cam_render_state);
 
   const renderer = new OpenGLRenderer(canvas, window.innerWidth, window.innerHeight);
-  renderer.setClearColor(164.0 / 255.0, 233.0 / 255.0, 1.0, 1);
   gl.enable(gl.DEPTH_TEST);
 
   const flat = new ShaderProgram([

@@ -928,11 +928,13 @@ vec3 world_normal(float obj_id, vec3 pos) {
   return normal;
 }
 
+const float T_MAX = 10000.0;
+
 vec2 world_intersect(vec3 ro, vec3 rd) {
   // TODO - use the boxes to iterate through viable ranges of t
 
   float t_min = 0.1;
-  float t_max = 10000.0;
+  float t_max = T_MAX;
   float min_step = 0.001;
   // stores (t, obj_id)
   vec2 result = vec2(t_min, -1);
@@ -1192,6 +1194,7 @@ void main() {
   vec3 ro, rd;
 
   vec3 color = vec3(0.0);
+  float t = 0.0;
   #if AA > 1
   for (int i = 0; i < AA; ++i) {
   for (int j = 0; j < AA; ++j) {
@@ -1202,10 +1205,11 @@ void main() {
   #endif
     ray_for_pixel(u_Eye, uv_pos, ro, rd);
     vec2 intersect = world_intersect(ro, rd);
-    float t = intersect.x;
+    t = intersect.x;
     float obj_id = intersect.y;
     if (obj_id == -1.0) {
       color += background_color(ro, rd);  
+      t = T_MAX;
     } else {
       vec3 inter_pos = ro + t * rd;
       vec3 world_nor = world_normal(obj_id, inter_pos);  
@@ -1215,10 +1219,9 @@ void main() {
   }
   }
   color /= float(AA*AA);
+  t /= float(AA*AA);
   #endif
 
-  //vec3 col = 0.5 * (rd + vec3(1.0));
-
-  out_Col = vec4(color, 1.0);
+  out_Col = vec4(color, t);
 }
 
