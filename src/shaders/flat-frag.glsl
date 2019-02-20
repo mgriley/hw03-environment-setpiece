@@ -718,6 +718,12 @@ vec2 debug_sdf(vec3 pos, vec2 res) {
 const float head_h = 18.0;
 const float head_r = 10.0;
 const vec3 head_pos = vec3(0.0,head_h,0.0);
+const float eye_angle = -0.35*pi;
+const float eye_r = 3.0;
+
+vec3 monster_eye_pos() {
+  return 0.7*head_r*vec3(cos(eye_angle),0.0,sin(eye_angle))+vec3(0.0,head_h+3.0,0.0);
+}
 
 vec2 monster_sdf(vec3 pos, vec2 in_res) {
   
@@ -752,9 +758,7 @@ vec2 monster_sdf(vec3 pos, vec2 in_res) {
 
   // eyes
   vec3 mir_p = mirror(pos, vec3(0.0), vec3(1.0,0.0,0.0));
-  float eye_angle = -0.35*pi;
-  vec3 eye_pos = 0.7*head_r*vec3(cos(eye_angle),0.0,sin(eye_angle))+vec3(0.0,head_h+3.0,0.0);
-  float eye_r = 3.0;
+  vec3 eye_pos = monster_eye_pos();
   float eye_d = sd_sphere(mir_p - eye_pos, eye_r);
   float socket_d = sd_sphere(mir_p - eye_pos, eye_r + 0.02);
   // required to prevent cutting into the mouth
@@ -776,8 +780,8 @@ vec2 monster_sdf(vec3 pos, vec2 in_res) {
   //d = op_sdiff(d, socket_d, 0.75);
   d = op_sintersect(d, ground_d, 2.0);
   res = update_res(in_res, d, op_res.y == 0.0 ? MonsterBodyId : MonsterMouthId);
-  d = op_union(d, eye_d);
-  //d = op_sunion(d, eye_d,0.5);
+  //d = op_union(d, eye_d);
+  d = op_sunion(d, eye_d,0.1);
   res = update_res(res, d, MonsterMainEyeId);
   //vec2 eye_res = op2_sunion(d, liner_d, 1.0);
   //d = eye_res.x;
@@ -968,11 +972,13 @@ float compute_ao(vec3 pos, vec3 nor) {
   return clamp(1.0 - 2.0 * occ, 0.0, 1.0);
 }
 
-const vec3 sun_dir = normalize(vec3(2.0, 0.5, 1.0));
+const vec3 sun_dir = normalize(vec3(1.0, 0.5, 1.0));
 
 vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
   vec3 final_color = vec3(-1.0);
   vec3 material_color = vec3(0.5, 0.0, 0.0);
+
+  vec3 monster_body_col = 0.2*vec3(0.43,0.9,0.29);
   switch (int(obj_id)) {
     case int(GreyId):
       material_color = vec3(0.5);
@@ -985,31 +991,32 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
       break;
     }
     case int(MonsterBodyId): {
-      material_color = 0.2*vec3(0.43,0.9,0.29);
+      material_color = monster_body_col;
       break;
     }
     case int(MonsterMainEyeId): {
-      vec3 left_orien_vec = vec3(1.0,0.75,-1.5);
-      vec3 orien_vec = normalize(
-        pos.x > 0.0 ? left_orien_vec : left_orien_vec*vec3(-1.0,1.0,1.0)
-      );
       vec3 look_vec = normalize(
-        pos.x > 0.0 ? vec3(1.0,1.0,-1.0) : vec3(0.0,0.0,-1.0)
+        pos.x > 0.0 ? vec3(0.6,0.3,-1.0) : vec3(-1.0,-0.2,-3.2)
       );
       vec3 pupil_col = vec3(0.83,0.35,0.45);
       vec3 outer_pupil_col = vec3(104.0,58.0,135.0)/255.0;
-      // main
-      vec3 col = 0.7*vec3(1.0,1.0,0.95);
-      // liner
-      /*
-      float dot_orien = clamp(dot(orien_vec, normal),0.0,1.0);
-      col = mix(pupil_col, col, smoothstep(0.65,0.7,dot_orien));
-      col = mix(outer_pupil_col, col, smoothstep(0.60, 0.65, dot_orien));
-      */
+      vec3 main_eye_col = 0.7*vec3(1.0,1.0,0.95);
+
+      vec3 left_eye_pos = monster_eye_pos();
+      vec3 right_eye_pos = mirror(left_eye_pos, vec3(0.0), vec3(-1.0,0.0,0.0));
+      vec3 eye_pos = pos.x > 0.0 ? left_eye_pos : right_eye_pos;
+      vec3 eye_out = normalize(pos - eye_pos);
+      float dot_orien = clamp(dot(eye_out, normalize(eye_pos - head_pos)),0.0,1.0);
+
+      // progress from body to eye liner to main eye
+      vec3 col = monster_body_col;
+      col = mix(col, outer_pupil_col, smoothstep(0.7, 0.7 + 0.05, dot_orien));
+      col = mix(col, main_eye_col, smoothstep(0.75,0.85, dot_orien));
+
       // pupils
-      float dot_look = clamp(dot(look_vec, normal),0.0,1.0);
-      col = mix(col, vec3(0.0), smoothstep(0.98,0.985,dot_look));
-      col = mix(col, pupil_col, smoothstep(0.99,0.995,dot_look));
+      float dot_look = clamp(dot(look_vec, eye_out),0.0,1.0);
+      col = mix(col, vec3(0.0), smoothstep(0.98,0.985,dot_look*dot_look));
+      col = mix(col, pupil_col, smoothstep(0.99,0.995,dot_look*dot_look));
       
       material_color = col;
       break;
@@ -1042,7 +1049,9 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
     case int(LandscapeId): {
       //vec3 dirt_a = 0.2*vec3(68.0,52.0,27.0)/100.0;
       //vec3 dirt_b = 0.2*vec3(59.0,42.0,17.0)/100.0;
-      vec3 sand = 0.75*vec3(0.83,0.78,0.68);
+
+      //vec3 sand = 0.75*vec3(0.83,0.78,0.68);
+			vec3 sand = 0.75*vec3(0.4);
 
       // works well for dirt
       //float n = fbm_2d(2.0*pos.xz);
@@ -1112,6 +1121,7 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
   vec3 out_col = lighting * material_color;
 
   // fog
+  /*
   {
     float pt_dist = length(pos - ro);
     float sun_amt = max(dot(key_light_dir, rd), 0.0);
@@ -1120,7 +1130,7 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
     float a = 2.0;
     float b = 0.2;
     // simple distance-fog
-    float fog_amt = 1.0 - exp(-pt_dist / 800.0);
+    float fog_amt = 1.0 - exp(-pt_dist / 5.0);
 
     // elevation-based fog
 		// TODO - flip the points if nor_y > 0
@@ -1131,10 +1141,8 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
     out_col = mix(out_col, fog_color, fog_amt);
     //out_col = vec3(fog_amt);
   }
-
-  // gamma correction
-  out_col = pow(out_col, vec3(1.0/2.2));
-
+  */
+  
   // if x is not -1.0, we are in some debug mode, so use
   // the debug color
   if (final_color.x == -1.0) {
@@ -1150,26 +1158,27 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
 }
 
 vec3 background_color(vec3 ro, vec3 rd) {
-  // sun (gradually greater highlights while pointing in the sun direction)
-	vec3 light1 = sun_dir;
+	// sun (gradually greater highlights while pointing in the sun direction)
+	vec3 light1 = sun_dir;//normalize(vec3(-0.8,0.5,1.0));
 	float sundot = clamp(dot(light1, rd),0.0,1.0);
-	vec3 col = vec3(0.2,0.5,0.85)*1.1-rd.y*rd.y*0.5;
-	col += 0.25*vec3(1.0,0.7,0.4)*pow(sundot,5.0);
-	col += 0.25*vec3(1.0,0.8,0.6)*pow(sundot,64.0);
-	col += 0.3*vec3(1.0,0.8,0.6)*pow(sundot,500.0);
+	vec3 base_col = 0.6*vec3(0.34,0.20,0.34);
+	vec3 col = base_col-rd.y*rd.y*0.5;
+	vec3 sun_base_col = base_col*10.0;
+	//col += 0.25*sun_base_col*pow(sundot,5.0);
+	col += 0.25*sun_base_col*smoothstep(0.87,1.0,pow(sundot,100.0));
+	col += 0.3*sun_base_col*smoothstep(0.9,0.95,pow(sundot,100.0));//pow(sundot,500.0);
 
 	// clouds
 	// intersect with a plane high above the ground
 	float cloud_height = 1000.0;
 	vec2 cloud_pos = ro.xz + (cloud_height-ro.y)/rd.y * rd.xz;
-	//vec2 pos_offset = vec2(iTime / 20.0); // animate later
-	vec2 pos_offset = vec2(0.0);
-	float c_noise = fbm_3d(vec3(cloud_pos/1000.0+pos_offset, 0.0/*iTime/6.0*/));
-	col = mix(col, vec3(1.0,0.95,1.0), smoothstep(0.45,1.0,c_noise));
+	vec2 pos_offset = vec2(0.0);//vec2(iTime / 20.0);
+	float c_noise = fbm_3d(vec3(1.0/4.0*cloud_pos.x/1000.0, cloud_pos.y/1000.0, 0.0));
+	col = mix(col, vec3(0.75,0.48,0.94), smoothstep(0.5,0.6,c_noise));
 
 	// horizon
 	// very slight darkening as rd.y -> 0
-	col = mix(col, 0.68*vec3(0.4,0.65,1.0), pow(1.0-max(rd.y,0.0),16.0));
+	col = mix(col, base_col*0.6, pow(1.0-max(rd.y,0.0),16.0));
 
   return col;
 }
@@ -1185,6 +1194,25 @@ void ray_for_pixel(vec3 eye, vec2 ndc, inout vec3 ro, inout vec3 rd) {
 
   ro = eye;
   rd = normalize((u_Ref + h_vec + v_vec) - eye);
+}
+
+vec4 compute_color(vec2 intersect, vec3 ro, vec3 rd) {
+	float t = intersect.x;
+  float obj_id = intersect.y;
+	vec3 color;
+	if (obj_id == -1.0) {
+		color = background_color(ro, rd);  
+		t = T_MAX;
+	} else {
+		vec3 inter_pos = ro + t * rd;
+		vec3 world_nor = world_normal(obj_id, inter_pos);  
+		color = world_color(obj_id, ro, rd, inter_pos, world_nor); 
+	}
+
+  // gamma correction
+  color = pow(color, vec3(1.0/2.2));
+
+	return vec4(color, t);
 }
 
 // TODO - change to 2 for a nicer rendering
@@ -1205,16 +1233,9 @@ void main() {
   #endif
     ray_for_pixel(u_Eye, uv_pos, ro, rd);
     vec2 intersect = world_intersect(ro, rd);
-    t = intersect.x;
-    float obj_id = intersect.y;
-    if (obj_id == -1.0) {
-      color += background_color(ro, rd);  
-      t = T_MAX;
-    } else {
-      vec3 inter_pos = ro + t * rd;
-      vec3 world_nor = world_normal(obj_id, inter_pos);  
-      color += world_color(obj_id, ro, rd, inter_pos, world_nor); 
-    } 
+		vec4 res = compute_color(intersect, ro, rd);
+    color += res.xyz;
+		t += res.w;
   #if AA > 1
   }
   }

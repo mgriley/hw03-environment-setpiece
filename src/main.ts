@@ -163,6 +163,7 @@ function main() {
     stats.begin();
     processKeyPresses();
     flat.setControls(controls);
+    post.setControls(controls);
     renderer.render(camera, flat, post, square, time);
     time++;
     stats.end();
