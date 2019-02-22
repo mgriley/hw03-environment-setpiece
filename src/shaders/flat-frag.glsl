@@ -766,7 +766,7 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
         pos.x > 0.0 ? vec3(0.6,0.3,-1.0) : vec3(-1.0,-0.2,-3.2)
       );
       vec3 pupil_col = 0.8*vec3(0.83,0.35,0.45);
-      vec3 outer_pupil_col = vec3(104.0,58.0,135.0)/255.0;
+      vec3 outer_pupil_col = 0.2*vec3(104.0,58.0,135.0)/255.0;
       vec3 main_eye_col = 0.7*vec3(1.0,1.0,0.95);
 
       vec3 left_eye_pos = monster_eye_pos();
