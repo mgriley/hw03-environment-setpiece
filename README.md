@@ -8,6 +8,12 @@ Live at: https://mgriley.github.io/hw03-environment-setpiece/
 
 Please note: The scene renders as intended on my Mac laptop and a Mac desktop, but not on the one Windows desktop that I happended to try (in which case the monster is red-bodied and mouth-less). I'm unsure what causes this.
 
+Inspiration:
+
+![](inspiration.jpg)
+
+Scene:
+
 ![](demo_shot.png)
 
 ## Techniques:
