@@ -23,8 +23,12 @@ let time: number = 0;
 
 // some convenient camera controls for switching to/from the
 // view that the final scene will be seen from
-let cam_render_state: any = {
+let cam_render_state_old: any = {
   eye: vec3.fromValues(-1.8, 6.5, -32.0),
+  target: vec3.fromValues(-1.6, 3.6, 0.4)
+};
+let cam_render_state: any = {
+  eye: vec3.fromValues(-6.7, 1.6, -31.70),
   target: vec3.fromValues(-1.6, 3.6, 0.4)
 };
 let cam_mid_state: any = {

@@ -14,11 +14,6 @@ out vec4 out_Col;
 const float pi = 3.14159;
 const float v_fov = pi / 4.0;
 
-struct AABB {
-  vec3 min;
-  vec3 max;
-};
-
 // Noise functions
 
 vec2 hash2( vec2 p ) { p=vec2(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3))); return fract(sin(p)*18.5453); }
@@ -458,250 +453,14 @@ vec2 update_res(vec2 cur_res, float d, float obj_id) {
 
 const float GreyId = 0.0;
 const float RedId = 1.0;
-const float TestId = 6.0;
-const float TerrainId = 7.0;
-const float SubsurfaceId = 8.0;
 
 const float MonsterBodyId = 9.0;
 const float MonsterMainEyeId = 10.0;
 const float MonsterMouthId = 11.0;
-const float MonsterEyeLinerId = 12.0;
 
 const float LandscapeId = 13.0;
-const float FoliageId = 14.0;
 const float PersonId = 15.0;
-
-// For testing and debugging
-vec2 test_sdf(vec3 pos, vec2 res) {
-  float d = res.x;
-  d = op_union(d, sd_box(pos - vec3(0.0,-1.0,0.0), vec3(4.0,1.0,4.0)));
-
-  // axes
-  {
-    float len = 20.0;
-    float cap_r = 0.05;
-    d = op_union(d, sd_capsule(pos, vec3(0.0), len*vec3(1.0,0.0,0.0), cap_r));
-    d = op_union(d, sd_capsule(pos, vec3(0.0), len*vec3(0.0,1.0,0.0), cap_r));
-    d = op_union(d, sd_capsule(pos, vec3(0.0), len*vec3(0.0,0.0,1.0), cap_r));
-  }
-  /*
-  // elongation
-  {
-  vec4 elo = op_elongate(pos, vec3(2.0, 1.0, 1.0));
-  return elo.w + sd_sphere(elo.xyz, 1.0);
-  }
-  {
-  vec4 elo = op_elongate(pos, vec3(3.0, 0.0, 3.0));
-  return elo.w + sd_torus(elo.xyz, 1.0, 0.2);
-  }
-  */
-
-  // rounding
-  /*
-  d = min(d, sd_box(pos, vec3(1.0)));
-  d = min(d, op_round(sd_box(pos - vec3(4.0, 0.0, 0.0), vec3(1.0)), 0.5));
-  */
-
-  // extrusion
-  /*
-  float prof_dist = sd_torus(vec3(pos.x, 0.0, pos.z), 2.0, 0.5);
-  d = min(d, op_extrude(pos, prof_dist, 3.0));
-  */
-
-  // revolution
-  /*
-  vec2 rev_pos = op_revolution(pos, 4.0);
-  d = min(d, sd_box(vec3(rev_pos.x, 0, rev_pos.y), vec3(1.0, 1.0, 1.0)));
-  */
-
-  // intersect
-  /*
-  float d_inter = op_intersect(sd_box(pos, vec3(1.0)), sd_sphere(pos, 1.25)); 
-  d = op_union(d, d_inter);
-  */
-
-  // diff
-  /*
-  float d_diff = op_diff(sd_box(pos, vec3(1.0)), sd_sphere(pos, 1.25));
-  d = op_union(d, d_diff);
-  */
-
-  // smooth operations
-  /*
-  {
-    float d_union = op_sunion(sd_box(pos, vec3(1.0)), sd_sphere(pos - vec3(0.0, 1.0, 0.0), 0.5), 0.5);
-    d = op_union(d, d_union);
-  }
-  */
-  /*
-  {
-    float d_inter = op_sintersect(sd_box(pos, vec3(1.0)), sd_sphere(pos - vec3(0.0, 1.0, 0.0), 0.5), 0.1);
-    d = op_union(d, d_inter);
-  }
-  */
-  /*
-  {
-    float d_diff = op_sdiff(sd_box(pos, vec3(4.0,0.5,4.0)), sd_sphere(pos, 2.0), 0.2);
-    d = op_union(d, d_diff);
-  }
-  */
-
-  // transformations
-  /*
-  {
-    // unif scale
-    float scale = 2.0;
-    d = op_union(d, sd_sphere(pos / scale, 1.0) * scale);
-  }
-  */
-  /*
-  {
-    // rotate and translate
-    vec3 local = local_pos(pos, vec3(0.0,1.0,0.0), pi/4.0, vec3(5.0));  
-    d = op_union(d, sd_box(local, vec3(1.0)));
-  }
-  */
-  
-  /*
-  // symmetry
-  {
-    vec3 sym_pos = vec3(abs(pos.x), abs(pos.y), pos.z);
-    d = op_union(d, sd_sphere(sym_pos - vec3(3.0), 0.5)); 
-  }
-  */
-  // repetition
-  /*
-  {
-    vec3 rep_pos = vec3(mod(pos.x, 10.0), pos.y, mod(pos.z,4.0)) - vec3(5.0,0.0,2.0);  
-    d = op_union(d, sd_sphere(rep_pos, 2.0));
-  }
-  */
-  /*
-  // distortion
-  {
-    float d1 = sd_sphere(pos, 2.0);
-    float d2 = 0.1*(sin(10.0*pos.x)+sin(10.0*pos.y)+sin(10.0*pos.z));
-    d = op_union(d, d1 + d2);
-  }
-  */
-  /*
-  // ambient occlusion
-  {
-    d = op_union(d, sd_sphere(pos - vec3(0.0,1.0,0.0), 1.0));
-  }
-  */
-  /*
-  // mirror
-  {
-    vec3 m_p = mirror(pos, vec3(0.0), vec3(1.0,0.0,0.0));
-    m_p = mirror(m_p, vec3(0.0,0.0,2.0), normalize(vec3(0.0, 0.0, -1.0)));
-    // NB: mirror orientation wouldn't matter if also mirrored the center of the
-    // sphere, I think. fine for now
-    d = op_union(d, sd_sphere(m_p - vec3(2.0,0.0,0.0), 1.0));
-  }
-  */
-  /*
-  // linear pattern
-  {
-    vec3 rep_pos = repeat(pos, vec3(0.0), vec3(1.0,1.0,2.0), ivec3(2,2,2));
-    d = op_union(d, sd_sphere(rep_pos, 0.5));
-  }
-  */
-  /*
-  // linear pattern even
-  {
-    vec3 rep_pos = repeat_evenly(pos, vec3(0.0), vec3(4.0,1.0,1.0), ivec3(4,1,1));
-    d = op_union(d, sd_sphere(rep_pos, 0.5));
-  }
-  */
-  // revolved pattern
-  {
-    vec3 rev_pos = revolve(pos, 10);
-    d = op_union(d, sd_sphere(rev_pos - vec3(4.0,0.0,0.0), 1.0));
-  }
-  // anchored box
-  /*
-  {
-    d = op_union(d, sd_box(pos, vec3(4.0,1.0,1.0), vec3(0.5,0.0,1.0)));
-  }
-  */
-
-  return update_res(res, d, TestId); 
-}
-
-vec2 test_shadows(vec3 pos, vec2 res) {
-  float d = res.x;
-
-  d = op_union(d, sd_plane(pos, vec3(0.0), vec3(0.0,1.0,0.0)));
-  d = op_union(d, sd_box(pos, vec3(3.0,5.0,0.5), vec3(0.5,0.0,0.5)));
-  d = op_union(d, sd_sphere(pos - vec3(5.0,1.0,0.0), 1.0));
-
-  res = update_res(res, d, GreyId);
-  return res;
-}
-
-vec2 test_aa(vec3 pos, vec2 res) {
-  float d = res.x;
-
-  d = op_union(d, sd_plane(pos, vec3(0.0), vec3(0.0,1.0,0.0)));
-  res = update_res(res, d, GreyId);
-  d = op_union(d, sd_box(pos, vec3(3.0,5.0,0.5), vec3(0.5,0.0,0.5)));
-  d = op_union(d, sd_sphere(pos - vec3(5.0,1.0,0.0), 1.0));
-  res = update_res(res, d, RedId);
-
-  return res;
-}
-
-/*
-float terr_fbm(vec2 pos) {
-	float freq = 1.0;
-	float weight = 0.5;
-	float val = 0.0;
-	float weight_sum = 0.0;
-	for (int i = 0; i < 8; ++i) {
-			val += weight * smooth_grad_2d(pos * freq);
-			weight_sum += weight;
-			weight *= 0.5;
-			freq *= 2.0;
-	}
-	return val / weight_sum;
-}
-*/
-
-/*
-float sd_terrain(vec3 pos) {
-  float h = 60.0*terr_fbm(pos.xz/40.0);
-  // scale down the SD so that we don't step too far forwards.
-  // regardless, we will still stop once we have penetrated the terrain.
-  // this doesn't affect the normal since it uniformly scales the
-  // iso-surfaces, I think.
-  return 0.35*(pos.y - h);  
-}
-*/
-
-/*
-vec2 terrain_sdf(vec3 pos, vec2 res) {
-  float d = res.x;
-  
-  d = op_union(d, sd_plane(pos, vec3(0.0), vec3(0.0,1.0,0.0)));
-  res = update_res(res, d, GreyId);
-
-  d = op_union(d, sd_terrain(pos));
-  res = update_res(res, d, TerrainId);
-
-  return res;
-}
-*/
-
-vec2 test_ss(vec3 pos, vec2 res) {
-  float d = res.x;
-
-  d = op_union(d, sd_sphere(pos, 1.0)); 
-  d = op_union(d, sd_box(pos - vec3(6.0,0.0,0.0), vec3(3.0)));
-  res = update_res(res, d, SubsurfaceId);
-
-  return res;
-}
+const float BladeId = 16.0;
 
 vec2 debug_sdf(vec3 pos, vec2 res) {
   // axes
@@ -760,15 +519,12 @@ vec2 monster_sdf(vec3 pos, vec2 in_res) {
   vec3 mir_p = mirror(pos, vec3(0.0), vec3(1.0,0.0,0.0));
   vec3 eye_pos = monster_eye_pos();
   float eye_d = sd_sphere(mir_p - eye_pos, eye_r);
-  float socket_d = sd_sphere(mir_p - eye_pos, eye_r + 0.02);
-  // required to prevent cutting into the mouth
-  socket_d = op_intersect(socket_d, -sd_sphere(pos - head_pos,head_r*0.9));
   float liner_d = sd_sphere(mir_p - eye_pos, eye_r + 0.001);
   vec3 head_to_eye = normalize(eye_pos - head_pos);
   liner_d = op_sintersect(
     sd_plane(mir_p, eye_pos+0.0*head_to_eye, -head_to_eye), liner_d, 1.0);
 
-  // for clipping to +ve y
+  // for clipping to +ve y (allows smoothing the legs as they contact the ground)
   float ground_d = sd_plane(pos, vec3(0.0), vec3(0.0,-1.0,0.0));
 
   // compose
@@ -777,15 +533,10 @@ vec2 monster_sdf(vec3 pos, vec2 in_res) {
   d = op_union(d, body_d);
   vec2 op_res = op2_sdiff(d, mouth_d, 0.5);
   d = op_res.x;
-  //d = op_sdiff(d, socket_d, 0.75);
   d = op_sintersect(d, ground_d, 2.0);
   res = update_res(in_res, d, op_res.y == 0.0 ? MonsterBodyId : MonsterMouthId);
-  //d = op_union(d, eye_d);
   d = op_sunion(d, eye_d,0.1);
   res = update_res(res, d, MonsterMainEyeId);
-  //vec2 eye_res = op2_sunion(d, liner_d, 1.0);
-  //d = eye_res.x;
-  //res = update_res(res, d, MonsterMainEyeId);//eye_res.y == 0.0 ? MonsterMainEyeId : MonsterEyeLinerId);
 
   return res;
 }
@@ -794,7 +545,7 @@ vec2 person_sdf(vec3 pos, vec2 res) {
   float d = 1e10;
 
   float scale = 1.0/10.0;
-  pos = local_pos(pos, vec3(0.0,1.0,0.0), -pi/12.0, vec3(0.0,0.0,-20.0)) / scale;
+  pos = local_pos(pos, vec3(0.0,1.0,0.0), -pi/10.0, vec3(0.0,0.0,-25.0)) / scale;
 
   // stick figure in fighting stance
   float torso_len = 5.0;
@@ -803,7 +554,7 @@ vec2 person_sdf(vec3 pos, vec2 res) {
   vec3 m_plane = normalize(vec3(-1.0,0.0,-1.0));
   vec3 look_dir = -cross(m_plane, vec3(0.0,1.0,0.0));
   vec3 hip_pos = vec3(0.0,torso_len*1.5,0.0);
-  vec3 neck_pos = hip_pos + vec3(0.0,torso_len,0.0) + 0.5*look_dir;
+  vec3 neck_pos = hip_pos + vec3(0.0,torso_len,0.0) + 1.0*look_dir;
   vec3 head_pos = neck_pos + look_dir*0.75 + vec3(0.0,2.0*head_r,0.0);
   vec3 left_foot_pos = vec3(2.0, 0.0, 2.0);
   vec3 right_foot_pos = left_foot_pos * vec3(-1.0,1.0,-1.0);
@@ -833,13 +584,12 @@ vec2 person_sdf(vec3 pos, vec2 res) {
   res = update_res(res, d*scale, PersonId);
 
   // weapon
-  vec3 sword_axis = normalize(look_dir + vec3(0.0,6.0,0.0));
+  vec3 sword_axis = normalize(1.5*look_dir + vec3(-0.5,6.0,0.0));
   vec3 grip_pos = right_hand_pos;
-  
-  d = op_union(d, sd_capsule(pos, grip_pos-sword_axis*0.75, grip_pos+sword_axis*0.75, 0.5*l_r));
-  d = op_union(d, sd_capsule(pos, grip_pos, grip_pos + sword_axis*15.0, 0.1));
-  // TODO
+  d = op_union(d, sd_capsule(pos, grip_pos-sword_axis*1.0, grip_pos+sword_axis*0.75, 0.5*l_r));
   res = update_res(res, d*scale, PersonId);
+  d = op_union(d, sd_capsule(pos, grip_pos, grip_pos + sword_axis*24.0, 0.2));
+  res = update_res(res, d*scale, BladeId);
 
   return res;
 }
@@ -874,12 +624,6 @@ vec2 ground_sdf(vec3 pos, vec2 res) {
   //d = op_union(d, mountains_sd(pos));
   res = update_res(res, d, LandscapeId);
 
-  /*
-  vec3 rep_p = repeat(pos, vec3(-30.0,0.0,-30.0), vec3(1.0), ivec3(10,1,10));
-  d = op_union(d, sd_sphere(rep_p, 0.5));
-  res = update_res(res, d, FoliageId);
-  */
-
   return res;
 }
 
@@ -887,15 +631,10 @@ vec2 world_sdf(vec3 pos) {
   float d = 1e10;          
   vec2 res = vec2(d, 0.0);
 
-  res = debug_sdf(pos, res);
+  //res = debug_sdf(pos, res);
   res = ground_sdf(pos, res);
   res = monster_sdf(pos, res);
   res = person_sdf(pos, res);
-
-  //res = test_sdf(pos, res);
-  //res = test_aa(pos, res);
-  //res = test_ss(pos, res);
-  //res = terrain_sdf(pos, res);
 
   return res;
 }
@@ -935,8 +674,6 @@ vec3 world_normal(float obj_id, vec3 pos) {
 const float T_MAX = 10000.0;
 
 vec2 world_intersect(vec3 ro, vec3 rd) {
-  // TODO - use the boxes to iterate through viable ranges of t
-
   float t_min = 0.1;
   float t_max = T_MAX;
   float min_step = 0.001;
@@ -974,6 +711,40 @@ float compute_ao(vec3 pos, vec3 nor) {
 
 const vec3 sun_dir = normalize(vec3(1.0, 0.5, 1.0));
 
+vec3 apply_fog(vec3 in_col, vec3 pos, vec3 ro, vec3 rd) {
+  float pt_dist = length(pos - ro);
+  float sun_amt = max(dot(sun_dir, rd), 0.0);
+  vec3 light_fog = 0.5*vec3(0.88,0.21,0.59);
+  vec3 fog_color = mix(0.2*vec3(0.5,0.6,0.7),
+    light_fog,pow(sun_amt,2.0));
+  float a = 2.0;
+  float b = 0.2;
+
+  // distance-fog
+  float fog_amt = 1.0 - exp(-pt_dist / 10.0);
+  fog_amt *= pow(clamp(abs(1.0-rd.y),0.0,1.0), 6.0);
+  //fog_amt *= 1.0 - pow(abs(rd.x), 10.0);
+
+  float n = fbm_3d(rd*6.0 + vec3(0.0,0.0,u_Time/100.0));
+  fog_amt *= pow(n,2.0);
+  
+  fog_amt = clamp(fog_amt, 0.0, 1.0);
+  vec3 out_col = mix(in_col, fog_color, fog_amt);
+  //out_col = vec3(fog_amt);
+  return out_col;
+}
+
+// Subsurface Scattering helper - currently unused
+float ss_amount(vec3 ro, vec3 rd, vec3 normal, vec3 light_dir) {
+  vec3 scatter_dir = -normalize(light_dir + normal*0.1);
+  float light_amt = pow(max(dot(scatter_dir, -rd), 0.0), 50.0);
+  // very rough approx of the thinness (AA from inside might work better)
+  // works fine if the object is roughly spherical
+  float thinness = pow(1.0 - max(dot(scatter_dir, normal),0.0), 2.0);
+  light_amt *= thinness;
+  return light_amt;
+}
+
 vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
   vec3 final_color = vec3(-1.0);
   vec3 material_color = vec3(0.5, 0.0, 0.0);
@@ -986,10 +757,6 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
     case int(RedId):
       material_color = vec3(0.5, 0.0, 0.0);
       break;
-    case int(TestId): {
-      material_color = vec3(0.5,0.0,0.0);
-      break;
-    }
     case int(MonsterBodyId): {
       material_color = monster_body_col;
       break;
@@ -998,7 +765,7 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
       vec3 look_vec = normalize(
         pos.x > 0.0 ? vec3(0.6,0.3,-1.0) : vec3(-1.0,-0.2,-3.2)
       );
-      vec3 pupil_col = vec3(0.83,0.35,0.45);
+      vec3 pupil_col = 0.8*vec3(0.83,0.35,0.45);
       vec3 outer_pupil_col = vec3(104.0,58.0,135.0)/255.0;
       vec3 main_eye_col = 0.7*vec3(1.0,1.0,0.95);
 
@@ -1015,35 +782,14 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
 
       // pupils
       float dot_look = clamp(dot(look_vec, eye_out),0.0,1.0);
-      col = mix(col, vec3(0.0), smoothstep(0.98,0.985,dot_look*dot_look));
+      col = mix(col, vec3(0.0,0.05,0.0), smoothstep(0.98,0.985,dot_look*dot_look));
       col = mix(col, pupil_col, smoothstep(0.99,0.995,dot_look*dot_look));
       
       material_color = col;
       break;
     }
-    case int(MonsterEyeLinerId): {
-      material_color = vec3(0.5,0.0,0.0);
-      break;
-    }
     case int(MonsterMouthId): {
       material_color = 0.2*vec3(0.5,0.01,0.01);
-      break;
-    }
-    case int(TerrainId): {
-			vec3 col = vec3(0.05,0.05,0.05);
-      vec3 base = 0.2*vec3(174.0,135.0,145.0)/255.0;
-
-			vec3 brown = 0.5*vec3(0.45,.30,0.15);
-			//vec3 green = 0.63*vec3(0.1,.20,0.10);
-      vec3 snow = 0.2*vec3(1.0,0.95,1.0);
-			col = mix(col, brown, smoothstep(0.7,1.0,normal.y));
-			//col = mix(col, green, smoothstep(0.9,1.0,normal.y));
-
-      float n = smooth_grad_2d(pos.xz/10.0);
-      float snow_f = normal.y * pow(pos.y / 10.0,2.0);
-      col = mix(col, snow, snow_f*smoothstep(0.5,1.0,n));
-
-      material_color = col;
       break;
     }
     case int(LandscapeId): {
@@ -1076,25 +822,10 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
       material_color = col;
       break;
     }
-    case int(FoliageId): {
-      vec3 col = vec3(0.0,0.2,0.0);
-      material_color = col;
-      break;
-    }
-    case int(SubsurfaceId): {
-      vec3 base_col = vec3(0.3,0.0,0.0);
-      vec3 light_dir = vec3(0.0,0.0,1.0);
-      vec3 light_col = vec3(1.0,1.0,0.9);
-      vec3 scatter_dir = -normalize(light_dir + normal*0.1);
-      float light_amt = pow(max(dot(scatter_dir, -rd), 0.0), 100.0);
-      // very rough approx of the thinness (AA from inside might work better)
-      // works fine if the object is roughly spherical
-      float thinness = pow(1.0 - max(dot(scatter_dir, normal),0.0), 2.0);
-      light_amt *= thinness;
-      base_col = mix(base_col, light_col, light_amt);
-      material_color = base_col;
-
-      //final_color = vec3(light_amt);
+    case int(BladeId): {
+      // make the color > 1.0 so that when gaussian blur is applied
+      // there is a very slight bloom effect
+      material_color = vec3(6.0);
       break;
     }
   }
@@ -1110,8 +841,10 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
   vec3 indir_light_dir = normalize(key_light_dir*vec3(-1.0,0.0,-1.0));
   float indir_light_amt = clamp(dot(indir_light_dir, normal), 0.0, 1.0);
 
-  float occ = compute_ao(pos, normal);
-  float shadow = compute_shadow(pos+0.001*key_light_dir, key_light_dir, 16.0);
+  float occ_amt = compute_ao(pos, normal);
+  vec3 occ = vec3(1.0)*occ_amt;//occ_amt*vec3(104.0,58.0,135.0)/255.0;
+  float shadow_amt = compute_shadow(pos+0.001*key_light_dir, key_light_dir, 16.0);
+  vec3 shadow = vec3(1.0)*shadow_amt;//shadow_amt*vec3(104.0,58.0,135.0)/255.0;
 
   vec3 lighting = vec3(0.0);
   lighting += u_bin.x ? vec3(0.0) : key_light_col*key_light_amt*shadow;
@@ -1120,29 +853,8 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
 
   vec3 out_col = lighting * material_color;
 
-  // fog
-  /*
-  {
-    float pt_dist = length(pos - ro);
-    float sun_amt = max(dot(key_light_dir, rd), 0.0);
-    vec3 fog_color = mix(0.2*vec3(0.5,0.6,0.7),
-      0.2*vec3(1.0,0.9,0.7),pow(sun_amt,2.0));
-    float a = 2.0;
-    float b = 0.2;
-    // simple distance-fog
-    float fog_amt = 1.0 - exp(-pt_dist / 5.0);
-
-    // elevation-based fog
-		// TODO - flip the points if nor_y > 0
-    //float nor_y = min(rd.y, -0.001); // formula requires rd.y < 0
-    //float fog_amt = a*exp(-b*ro.y)*(1.0-exp(-b*nor_y*pt_dist))/(b*nor_y);
-
-    fog_amt = clamp(fog_amt, 0.0, 1.0);
-    out_col = mix(out_col, fog_color, fog_amt);
-    //out_col = vec3(fog_amt);
-  }
-  */
-  
+  out_col = apply_fog(out_col, pos, ro, rd);
+      
   // if x is not -1.0, we are in some debug mode, so use
   // the debug color
   if (final_color.x == -1.0) {
@@ -1157,28 +869,37 @@ vec3 world_color(float obj_id, vec3 ro, vec3 rd, vec3 pos, vec3 normal) {
   //return vec3(1.0) * (normal.x + 1.0) * 0.5;
 }
 
+float sky_noise(vec2 pos, vec2 focal_pt) {
+  vec2 anim_pos = pos + vec2(u_Time / 100.0);
+	vec2 g = floor(anim_pos);
+  vec2 f = fract(anim_pos);
+  
+  float min_dist = 1e10;
+  for (int i = -1; i <= 1; i++) {
+      for (int j = -1; j <= 1; j++) {
+          vec2 offset_pos = vec2(ivec2(i,j));
+        vec2 delta = offset_pos + hash2(g + offset_pos) - f;
+          min_dist = min(min_dist, dot(delta, delta));
+      }
+  }
+  float res = sqrt(min_dist);
+  float shape_dist = length(pos - focal_pt) - 3.0;
+  float factor = shape_dist > 0.0 ? 8.0 : 12.0;
+  res *= exp(-factor*abs(shape_dist));
+  return clamp(res,0.0,1.0);
+}
+
 vec3 background_color(vec3 ro, vec3 rd) {
-	// sun (gradually greater highlights while pointing in the sun direction)
-	vec3 light1 = sun_dir;//normalize(vec3(-0.8,0.5,1.0));
-	float sundot = clamp(dot(light1, rd),0.0,1.0);
-	vec3 base_col = 0.6*vec3(0.34,0.20,0.34);
-	vec3 col = base_col-rd.y*rd.y*0.5;
-	vec3 sun_base_col = base_col*10.0;
-	//col += 0.25*sun_base_col*pow(sundot,5.0);
-	col += 0.25*sun_base_col*smoothstep(0.87,1.0,pow(sundot,100.0));
-	col += 0.3*sun_base_col*smoothstep(0.9,0.95,pow(sundot,100.0));//pow(sundot,500.0);
+  vec3 col = vec3(0.0,0.0,0.05);
+  
+  // intersect with vertical plane far away, normal (0, 0, -1)
+  vec3 plane_pt = ro + rd*(1000.0 - ro.z) / rd.z;
 
-	// clouds
-	// intersect with a plane high above the ground
-	float cloud_height = 1000.0;
-	vec2 cloud_pos = ro.xz + (cloud_height-ro.y)/rd.y * rd.xz;
-	vec2 pos_offset = vec2(0.0);//vec2(iTime / 20.0);
-	float c_noise = fbm_3d(vec3(1.0/4.0*cloud_pos.x/1000.0, cloud_pos.y/1000.0, 0.0));
-	col = mix(col, vec3(0.75,0.48,0.94), smoothstep(0.5,0.6,c_noise));
+  float n = sky_noise(plane_pt.xy/100.0, vec2(7.0,7.0));
+  vec3 light_col = mix(vec3(1.0), vec3(0.88,0.21,0.59), 1.0-rd.y);
+  col = vec3(n)*light_col;
 
-	// horizon
-	// very slight darkening as rd.y -> 0
-	col = mix(col, base_col*0.6, pow(1.0-max(rd.y,0.0),16.0));
+  col = apply_fog(col, plane_pt, ro, rd);
 
   return col;
 }
@@ -1215,7 +936,7 @@ vec4 compute_color(vec2 intersect, vec3 ro, vec3 rd) {
 	return vec4(color, t);
 }
 
-// TODO - change to 2 for a nicer rendering
+// Change to 2 to activate AA
 #define AA 1
 
 void main() {
